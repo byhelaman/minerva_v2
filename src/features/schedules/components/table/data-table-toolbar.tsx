@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { formatTimeTo12Hour } from "@schedules/utils/time-utils";
 import { Schedule } from "@schedules/utils/excel-parser";
 import { useSettings } from "@/components/settings-provider";
+import { RequirePermission } from "@/components/RequirePermission";
 
 // Opciones de filtro para campos de Schedule
 const shiftOptions = [
@@ -281,12 +282,15 @@ export function DataTableToolbar<TData>({
 
             <div className="flex items-center justify-between gap-2 w-full">
                 <div className="flex flex-1 items-center gap-2">
-                    <Button
-                        size="sm"
-                        onClick={onUploadClick}
-                    >
-                        Upload Files
-                    </Button>
+                    {/* Upload Files - requires schedules.write permission */}
+                    <RequirePermission permission="schedules.write">
+                        <Button
+                            size="sm"
+                            onClick={onUploadClick}
+                        >
+                            Upload Files
+                        </Button>
+                    </RequirePermission>
                     <InputGroup className="w-[320px]">
                         <InputGroupAddon>
                             <Search className="size-4 text-muted-foreground" />

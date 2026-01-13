@@ -28,9 +28,21 @@
         "current_password_desc": "Enter your current password to verify your identity.",
         "new_password": "New Password",
         "confirm_password": "Confirm Password",
+        "confirm_password_desc": "Please confirm your new password.",
         "password_desc": "Password must be at least 8 characters long.",
         "update_password": "Update Password",
-        "confirm_password_desc": "Please confirm your new password."
+        "permissions": {
+            "title": "Permissions",
+            "desc": "Your access level and capabilities.",
+            "none": "No permissions assigned"
+        },
+        "zoom": {
+            "title": "Zoom Integration",
+            "desc": "Connect your personal Zoom account.",
+            "not_connected": "Not Connected",
+            "no_account_linked": "No account linked",
+            "connect_button": "Connect Zoom"
+        }
     },
     "settings": {
         "title": "Settings",
@@ -75,16 +87,12 @@
             "quick_export_warning": "Export Path must be set to a folder within Downloads, Documents, or Desktop for this to work.",
             "browse": "Browse..."
         },
-        "permissions": {
-            "title": "Permissions",
-            "desc": "Your access level and capabilities"
-        },
-        "zoom": {
-            "title": "Zoom Integration",
-            "desc": "Connect your organization's Zoom account",
-            "not_connected": "Not Connected",
-            "no_account_linked": "No account linked",
-            "connect_button": "Connect Zoom"
+        "preferences": {
+            "title": "Preferences",
+            "desc": "Manage your regional settings.",
+            "language": "Language",
+            "language_desc": "Select your preferred language.",
+            "language_changed": "Language updated"
         },
         "system": {
             "title": "System",

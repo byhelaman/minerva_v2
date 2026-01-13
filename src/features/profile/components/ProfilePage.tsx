@@ -6,6 +6,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { RequirePermission } from "@/components/RequirePermission";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,17 +17,10 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Loader2 } from "lucide-react";
+import { Loader2, Link2 } from "lucide-react";
 
 const accountFormSchema = z.object({
     displayName: z
@@ -49,16 +43,11 @@ const passwordFormSchema = z.object({
     path: ["confirmPassword"],
 });
 
-const preferencesFormSchema = z.object({
-    language: z.string(),
-});
-
 type AccountFormValues = z.infer<typeof accountFormSchema>;
 type PasswordFormValues = z.infer<typeof passwordFormSchema>;
-type PreferencesFormValues = z.infer<typeof preferencesFormSchema>;
 
 export function ProfilePage() {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const { profile, updateDisplayName, updatePassword, verifyCurrentPassword } = useAuth();
     const [isAccountLoading, setIsAccountLoading] = useState(false);
     const [isPasswordLoading, setIsPasswordLoading] = useState(false);
@@ -87,13 +76,6 @@ export function ProfilePage() {
             currentPassword: "",
             newPassword: "",
             confirmPassword: "",
-        },
-    });
-
-    const preferencesForm = useForm<PreferencesFormValues>({
-        resolver: zodResolver(preferencesFormSchema),
-        defaultValues: {
-            language: i18n.language || "en",
         },
     });
 
@@ -145,13 +127,6 @@ export function ProfilePage() {
         } finally {
             setIsPasswordLoading(false);
         }
-    }
-
-    function onPreferencesSubmit(data: PreferencesFormValues) {
-        i18n.changeLanguage(data.language);
-        toast.success("Preferences updated", {
-            description: `Language set to ${data.language === 'en' ? 'English' : data.language === 'es' ? 'Español' : 'Français'}`,
-        });
     }
 
     return (
@@ -228,47 +203,6 @@ export function ProfilePage() {
                         </CardFooter>
                     </Card>
 
-                    {/* Preferences */}
-                    <Card className="shadow-none">
-                        <CardHeader>
-                            <CardTitle>{t("profile.preferences")}</CardTitle>
-                            <CardDescription>
-                                {t("profile.preferences_desc")}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form id="preferences-form" onSubmit={preferencesForm.handleSubmit(onPreferencesSubmit)}>
-                                <FieldGroup>
-                                    <Controller
-                                        control={preferencesForm.control}
-                                        name="language"
-                                        render={({ field }) => (
-                                            <Field>
-                                                <FieldLabel>{t("profile.language")}</FieldLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select a language" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="en">English</SelectItem>
-                                                        <SelectItem value="es">Español</SelectItem>
-                                                        <SelectItem value="fr">Français</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                                <FieldDescription>
-                                                    {t("profile.language_desc")}
-                                                </FieldDescription>
-                                            </Field>
-                                        )}
-                                    />
-                                </FieldGroup>
-                            </form>
-                        </CardContent>
-                        <CardFooter>
-                            <Button type="submit" form="preferences-form">{t("common.save")}</Button>
-                        </CardFooter>
-                    </Card>
-
                     {/* Danger Zone */}
                     <Card className="shadow-none border-destructive/50 bg-destructive/5">
                         <CardHeader>
@@ -292,6 +226,62 @@ export function ProfilePage() {
 
                 {/* Right Column */}
                 <div className="space-y-6">
+                    {/* Permissions - visible for all users */}
+                    <Card className="shadow-none">
+                        <CardHeader>
+                            <CardTitle>{t("profile.permissions.title")}</CardTitle>
+                            <CardDescription>
+                                {t("profile.permissions.desc")}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex flex-wrap gap-2">
+                                {profile?.permissions?.map(perm => (
+                                    <Badge key={perm} variant="outline" className="capitalize">
+                                        {perm.replace('.', ' ')}
+                                    </Badge>
+                                )) || (
+                                        <span className="text-sm text-muted-foreground">
+                                            {t("profile.permissions.none")}
+                                        </span>
+                                    )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Zoom Integration - Super Admin only */}
+                    <RequirePermission level={100}>
+                        <Card className="shadow-none">
+                            <CardHeader>
+                                <CardTitle>{t("profile.zoom.title")}</CardTitle>
+                                <CardDescription>
+                                    {t("profile.zoom.desc")}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center justify-between gap-6 flex-wrap">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="size-2 rounded-full bg-gray-300" />
+                                            <span className="font-medium text-sm">
+                                                {t("profile.zoom.not_connected")}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground">
+                                            {t("profile.zoom.no_account_linked")}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline">
+                                            <Link2 />
+                                            {t("profile.zoom.connect_button")}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </RequirePermission>
+
                     {/* Security */}
                     <Card className="shadow-none">
                         <CardHeader>

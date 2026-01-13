@@ -1,7 +1,6 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Link2, Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -35,7 +34,7 @@ import { AUTOSAVE_FILENAME, SETTINGS_FILENAME } from "@/lib/constants";
 import { useTranslation } from "react-i18next";
 
 export function SettingsPage() {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const { setTheme } = useTheme();
     const { settings, updateSetting } = useSettings();
     const [displayPath, setDisplayPath] = useState<string>("");
@@ -328,52 +327,38 @@ export function SettingsPage() {
 
                 {/* Right Column */}
                 <div className="space-y-6">
-                    {/* Permissions */}
+                    {/* Preferences (Language) */}
                     <Card className="shadow-none">
                         <CardHeader>
-                            <CardTitle>{t("settings.permissions.title")}</CardTitle>
+                            <CardTitle>{t("settings.preferences.title")}</CardTitle>
                             <CardDescription>
-                                {t("settings.permissions.desc")}
+                                {t("settings.preferences.desc")}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="flex flex-wrap gap-2">
-                                {["schedule", "auto_assign", "bulk_operations"].map(mod => (
-                                    <Badge key={mod} variant="outline" className="capitalize">
-                                        {mod.replace('_', ' ')}
-                                    </Badge>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Zoom Integration */}
-                    <Card className="shadow-none">
-                        <CardHeader>
-                            <CardTitle>{t("settings.zoom.title")}</CardTitle>
-                            <CardDescription>
-                                {t("settings.zoom.desc")}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center justify-between gap-6 flex-wrap">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <div className="size-2 rounded-full bg-gray-300" />
-                                        <span className="font-medium text-sm">
-                                            {t("settings.zoom.not_connected")}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">
-                                        {t("settings.zoom.no_account_linked")}
+                            <div className="flex items-center justify-between space-x-2">
+                                <div className="space-y-2">
+                                    <Label>{t("settings.preferences.language")}</Label>
+                                    <p className="font-normal text-xs text-muted-foreground">
+                                        {t("settings.preferences.language_desc")}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="outline">
-                                        <Link2 />
-                                        {t("settings.zoom.connect_button")}
-                                    </Button>
-                                </div>
+                                <Select
+                                    value={i18n.language}
+                                    onValueChange={(value) => {
+                                        i18n.changeLanguage(value);
+                                        toast.success(t("settings.preferences.language_changed"));
+                                    }}
+                                >
+                                    <SelectTrigger className="w-[160px]">
+                                        <SelectValue placeholder="Select language" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="en">English</SelectItem>
+                                        <SelectItem value="es">Español</SelectItem>
+                                        <SelectItem value="fr">Français</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </CardContent>
                     </Card>

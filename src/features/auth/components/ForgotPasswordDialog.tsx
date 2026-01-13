@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,11 +53,13 @@ export function ForgotPasswordDialog({
     defaultEmail,
 }: ForgotPasswordDialogProps) {
     const navigate = useNavigate();
-    const { sendResetPasswordEmail, verifyOtp, updatePassword } = useAuth();
+    const { sendResetPasswordEmail, verifyOtp, updatePassword, refreshProfile } = useAuth();
     const [step, setStep] = useState<Step>("email");
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [resendCountdown, setResendCountdown] = useState(0);
+    const isSuccess = useRef(false);
+
 
     // Countdown timer for resend
     useEffect(() => {
@@ -105,7 +107,8 @@ export function ForgotPasswordDialog({
     const handleOpenChange = (newOpen: boolean) => {
         if (!newOpen) {
             // Advertir si está en el paso de password (ya verificó OTP pero no cambió contraseña)
-            if (step === "password") {
+            // Y SOLO si no fue un éxito
+            if (step === "password" && !isSuccess.current) {
                 toast.dismiss();
                 toast.warning("Your password was not changed. You can change it later in your Profile.", {
                     duration: 30000,
@@ -120,6 +123,7 @@ export function ForgotPasswordDialog({
                 emailForm.reset();
                 otpForm.reset();
                 passwordForm.reset();
+                isSuccess.current = false;
             }, 300);
         }
         onOpenChange(newOpen);
@@ -181,6 +185,8 @@ export function ForgotPasswordDialog({
             if (error) {
                 toast.error("Failed to update password");
             } else {
+                isSuccess.current = true;
+                await refreshProfile(); // Asegurar que el perfil esté cargado
                 toast.success("Password updated successfully! 🎉");
                 handleOpenChange(false);
                 navigate("/");

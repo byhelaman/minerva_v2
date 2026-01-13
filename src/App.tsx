@@ -6,8 +6,9 @@ import { ScheduleDashboard } from "@/features/schedules/components/ScheduleDashb
 import { SettingsPage } from "@/features/settings/components/SettingsPage";
 import { ProfilePage } from "@/features/profile/components/ProfilePage";
 import { DocsPage } from "@/features/docs/components/DocsPage";
+import { SystemPage } from "@/features/system/components/SystemPage";
 import { LoginPage } from "@/features/auth/components/LoginPage";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
 import { useSettings } from "@/components/settings-provider";
 import { useTheme } from "@/components/theme-provider";
 
@@ -27,7 +28,7 @@ function ThemeSyncer() {
 
 function Layout() {
   return (
-    <div className="max-w-[1400px] mx-auto p-5 pb-10">
+    <div className="p-5 pb-10">
       <ThemeSyncer />
       <div className="flex pr-3">
         <MainNav />
@@ -35,7 +36,7 @@ function Layout() {
           <UserNav />
         </div>
       </div>
-      <div className="flex-1 px-3">
+      <div className="max-w-[1400px] mx-auto flex-1 px-3 p-5">
         <Outlet />
       </div>
     </div>
@@ -62,6 +63,11 @@ function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/docs" element={<DocsPage />} />
+        <Route path="/system" element={
+          <AdminRoute>
+            <SystemPage />
+          </AdminRoute>
+        } />
       </Route>
     </Routes>
   );

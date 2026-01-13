@@ -92,14 +92,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     return;
                 }
 
-                // Manejar sesión expirada o cerrada
-                if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED" && !session) {
+                // Manejar cierre de sesión
+                if (event === "SIGNED_OUT") {
                     setSession(null);
                     setUser(null);
                     setProfile(null);
-                    if (mounted) {
-                        setIsLoading(false);
-                    }
+                    if (mounted) setIsLoading(false);
+                    return;
+                }
+
+                // Manejar refresh de token fallido (session null = refresh token expiró)
+                if (event === "TOKEN_REFRESHED" && !session) {
+                    setSession(null);
+                    setUser(null);
+                    setProfile(null);
+                    if (mounted) setIsLoading(false);
                     return;
                 }
 

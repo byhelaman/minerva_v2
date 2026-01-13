@@ -78,8 +78,13 @@ export function UserNav() {
                             <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
                         </Link>
                     </DropdownMenuItem>
-                    {/* <DropdownMenuItem>Manage</DropdownMenuItem> */}
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                    <Link to="/system">
+                        System
+                    </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                     Log out

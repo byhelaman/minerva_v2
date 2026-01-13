@@ -25,10 +25,24 @@
         "security": "Seguridad",
         "security_desc": "Administra tu contraseña y preguntas de seguridad.",
         "current_password": "Contraseña Actual",
+        "current_password_desc": "Ingresa tu contraseña actual para verificar tu identidad.",
         "new_password": "Nueva Contraseña",
         "confirm_password": "Confirmar Contraseña",
+        "confirm_password_desc": "Vuelve a ingresar tu nueva contraseña.",
         "password_desc": "La contraseña debe tener al menos 8 caracteres.",
-        "update_password": "Actualizar Contraseña"
+        "update_password": "Actualizar Contraseña",
+        "permissions": {
+            "title": "Permisos",
+            "desc": "Tu nivel de acceso y capacidades.",
+            "none": "Sin permisos asignados"
+        },
+        "zoom": {
+            "title": "Integración con Zoom",
+            "desc": "Conecta tu cuenta de Zoom personal.",
+            "not_connected": "No Conectado",
+            "no_account_linked": "Ninguna cuenta vinculada",
+            "connect_button": "Conectar Zoom"
+        }
     },
     "settings": {
         "title": "Ajustes",
@@ -73,16 +87,12 @@
             "quick_export_warning": "La ruta de exportación debe estar en Descargas, Documentos o Escritorio para que esto funcione.",
             "browse": "Examinar..."
         },
-        "permissions": {
-            "title": "Permisos",
-            "desc": "Tu nivel de acceso y capacidades"
-        },
-        "zoom": {
-            "title": "Integración con Zoom",
-            "desc": "Conecta la cuenta de Zoom de tu organización",
-            "not_connected": "No Conectado",
-            "no_account_linked": "Ninguna cuenta vinculada",
-            "connect_button": "Conectar Zoom"
+        "preferences": {
+            "title": "Preferencias",
+            "desc": "Administra tu configuración regional.",
+            "language": "Idioma",
+            "language_desc": "Selecciona tu idioma preferido.",
+            "language_changed": "Idioma actualizado"
         },
         "system": {
             "title": "Sistema",

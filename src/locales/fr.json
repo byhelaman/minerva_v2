@@ -25,10 +25,24 @@
         "security": "Sécurité",
         "security_desc": "Gérez votre mot de passe et vos questions de sécurité.",
         "current_password": "Mot de passe actuel",
+        "current_password_desc": "Entrez votre mot de passe actuel pour vérifier votre identité.",
         "new_password": "Nouveau mot de passe",
         "confirm_password": "Confirmer le mot de passe",
+        "confirm_password_desc": "Veuillez confirmer votre nouveau mot de passe.",
         "password_desc": "Le mot de passe doit contenir au moins 8 caractères.",
-        "update_password": "Mettre à jour le mot de passe"
+        "update_password": "Mettre à jour le mot de passe",
+        "permissions": {
+            "title": "Permissions",
+            "desc": "Votre niveau d'accès et vos capacités.",
+            "none": "Aucune permission attribuée"
+        },
+        "zoom": {
+            "title": "Intégration Zoom",
+            "desc": "Connectez votre compte Zoom personnel.",
+            "not_connected": "Non Connecté",
+            "no_account_linked": "Aucun compte lié",
+            "connect_button": "Connecter Zoom"
+        }
     },
     "settings": {
         "title": "Paramètres",
@@ -73,16 +87,12 @@
             "quick_export_warning": "Le chemin d'exportation doit être dans Téléchargements, Documents ou Bureau pour fonctionner.",
             "browse": "Parcourir..."
         },
-        "permissions": {
-            "title": "Permissions",
-            "desc": "Votre niveau d'accès et vos capacités"
-        },
-        "zoom": {
-            "title": "Intégration Zoom",
-            "desc": "Connectez le compte Zoom de votre organisation",
-            "not_connected": "Non Connecté",
-            "no_account_linked": "Aucun compte lié",
-            "connect_button": "Connecter Zoom"
+        "preferences": {
+            "title": "Préférences",
+            "desc": "Gérez vos paramètres régionaux.",
+            "language": "Langue",
+            "language_desc": "Sélectionnez votre langue préférée.",
+            "language_changed": "Langue mise à jour"
         },
         "system": {
             "title": "Système",

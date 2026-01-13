@@ -8,6 +8,7 @@ import { BaseDirectory, exists, readTextFile, remove, writeTextFile } from "@tau
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/components/settings-provider";
+import { RequirePermission } from "@/components/RequirePermission";
 import { AUTOSAVE_FILENAME, AUTOSAVE_DEBOUNCE_MS } from "@/lib/constants";
 import { Bot, CalendarPlus, CalendarSearch } from "lucide-react";
 import { SearchLinkModal } from "./modals/SearchLinkModal";
@@ -150,29 +151,40 @@ export function ScheduleDashboard() {
                         Upload Files
                     </Button> */}
 
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setIsSearchModalOpen(true)}
-                    >
-                        <CalendarSearch />
-                        Search
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setIsCreateModalOpen(true)}
-                    >
-                        <CalendarPlus />
-                        Create
-                    </Button>
-                    <Button
-                        size="sm"
-                        onClick={() => setIsAssignModalOpen(true)}
-                    >
-                        <Bot />
-                        Assign
-                    </Button>
+                    {/* Search - requires zoom.search permission */}
+                    <RequirePermission permission="zoom.search">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setIsSearchModalOpen(true)}
+                        >
+                            <CalendarSearch />
+                            Search
+                        </Button>
+                    </RequirePermission>
+
+                    {/* Create - requires zoom.links permission */}
+                    <RequirePermission permission="zoom.links">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setIsCreateModalOpen(true)}
+                        >
+                            <CalendarPlus />
+                            Create
+                        </Button>
+                    </RequirePermission>
+
+                    {/* Assign - requires zoom.links permission */}
+                    <RequirePermission permission="zoom.links">
+                        <Button
+                            size="sm"
+                            onClick={() => setIsAssignModalOpen(true)}
+                        >
+                            <Bot />
+                            Assign
+                        </Button>
+                    </RequirePermission>
                 </div>
             </div>
             {/* Data Table */}
