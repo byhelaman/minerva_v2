@@ -6,10 +6,12 @@ import { ScheduleDashboard } from "@/features/schedules/components/ScheduleDashb
 import { SettingsPage } from "@/features/settings/components/SettingsPage";
 import { ProfilePage } from "@/features/profile/components/ProfilePage";
 import { DocsPage } from "@/features/docs/components/DocsPage";
+import { LoginPage } from "@/features/auth/components/LoginPage";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useSettings } from "@/components/settings-provider";
 import { useTheme } from "@/components/theme-provider";
 
-// Syncs theme from settings file to ThemeProvider on app load
+// Sincroniza el tema desde el archivo de configuración al ThemeProvider al cargar la app
 function ThemeSyncer() {
   const { settings, isLoading } = useSettings();
   const { setTheme } = useTheme();
@@ -40,10 +42,22 @@ function Layout() {
   );
 }
 
+
+
 function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
+      {/* Ruta pública - Login (signup se hace desde el dialog) */}
+      <Route path="/login" element={<LoginPage />} />
+
+      {/* Rutas protegidas */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
         <Route path="/" element={<ScheduleDashboard />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />

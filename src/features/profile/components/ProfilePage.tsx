@@ -4,6 +4,8 @@ import { useForm, Controller } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import * as z from "zod";
 import { toast } from "sonner";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/components/auth-provider";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Loader2 } from "lucide-react";
 
 const accountFormSchema = z.object({
     displayName: z
@@ -56,13 +59,27 @@ type PreferencesFormValues = z.infer<typeof preferencesFormSchema>;
 
 export function ProfilePage() {
     const { t, i18n } = useTranslation();
+    const { profile, updateDisplayName, updatePassword, verifyCurrentPassword } = useAuth();
+    const [isAccountLoading, setIsAccountLoading] = useState(false);
+    const [isPasswordLoading, setIsPasswordLoading] = useState(false);
+
     const accountForm = useForm<AccountFormValues>({
         resolver: zodResolver(accountFormSchema),
         defaultValues: {
-            displayName: "Jhon Doe",
-            email: "user@example.com",
+            displayName: "",
+            email: "",
         },
     });
+
+    // Sincronizar con profile cuando cargue
+    useEffect(() => {
+        if (profile) {
+            accountForm.reset({
+                displayName: profile.display_name || "",
+                email: profile.email || "",
+            });
+        }
+    }, [profile, accountForm]);
 
     const passwordForm = useForm<PasswordFormValues>({
         resolver: zodResolver(passwordFormSchema),
@@ -80,17 +97,54 @@ export function ProfilePage() {
         },
     });
 
-    function onAccountSubmit(data: AccountFormValues) {
-        toast.success("Account updated", {
-            description: `Display name changed to ${data.displayName}`,
-        });
+    async function onAccountSubmit(data: AccountFormValues) {
+        setIsAccountLoading(true);
+        try {
+            const { error } = await updateDisplayName(data.displayName);
+            if (error) {
+                toast.error("Failed to update account", {
+                    description: error.message,
+                });
+            } else {
+                toast.success("Account updated", {
+                    description: `Display name changed to ${data.displayName}`,
+                });
+            }
+        } catch {
+            toast.error("Failed to update account");
+        } finally {
+            setIsAccountLoading(false);
+        }
     }
 
-    function onPasswordSubmit(_data: PasswordFormValues) {
-        toast.success("Password updated", {
-            description: "Your password has been changed successfully.",
-        });
-        passwordForm.reset();
+    async function onPasswordSubmit(data: PasswordFormValues) {
+        setIsPasswordLoading(true);
+        try {
+            // Primero verificar la contraseña actual
+            const { error: verifyError } = await verifyCurrentPassword(data.currentPassword);
+            if (verifyError) {
+                toast.error("Current password is incorrect");
+                setIsPasswordLoading(false);
+                return;
+            }
+
+            // Si la verificación pasa, actualizar contraseña
+            const { error } = await updatePassword(data.newPassword);
+            if (error) {
+                toast.error("Failed to update password", {
+                    description: error.message,
+                });
+            } else {
+                toast.success("Password updated", {
+                    description: "Your password has been changed successfully.",
+                });
+                passwordForm.reset();
+            }
+        } catch {
+            toast.error("Failed to update password");
+        } finally {
+            setIsPasswordLoading(false);
+        }
     }
 
     function onPreferencesSubmit(data: PreferencesFormValues) {
@@ -120,7 +174,9 @@ export function ProfilePage() {
                                         {t("profile.account_info_desc")}
                                     </CardDescription>
                                 </div>
-                                <Badge variant="secondary">User</Badge>
+                                <Badge variant="secondary" className="capitalize">
+                                    {profile?.role || "User"}
+                                </Badge>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -165,7 +221,10 @@ export function ProfilePage() {
                             </form>
                         </CardContent>
                         <CardFooter>
-                            <Button type="submit" form="account-form">{t("common.save")}</Button>
+                            <Button type="submit" form="account-form" disabled={isAccountLoading}>
+                                {isAccountLoading && <Loader2 className="animate-spin" />}
+                                {t("common.save")}
+                            </Button>
                         </CardFooter>
                     </Card>
 
@@ -254,7 +313,9 @@ export function ProfilePage() {
                                                     {...field}
                                                     type="password"
                                                     aria-invalid={fieldState.invalid}
+                                                    disabled={isPasswordLoading}
                                                 />
+                                                <FieldDescription>{t("profile.current_password_desc")}</FieldDescription>
                                                 {fieldState.invalid && (
                                                     <FieldError errors={[fieldState.error]} />
                                                 )}
@@ -292,6 +353,7 @@ export function ProfilePage() {
                                                     type="password"
                                                     aria-invalid={fieldState.invalid}
                                                 />
+                                                <FieldDescription>{t("profile.confirm_password_desc")}</FieldDescription>
                                                 {fieldState.invalid && (
                                                     <FieldError errors={[fieldState.error]} />
                                                 )}
@@ -302,7 +364,8 @@ export function ProfilePage() {
                             </form>
                         </CardContent>
                         <CardFooter>
-                            <Button type="submit" variant="outline" form="password-form">
+                            <Button type="submit" variant="outline" form="password-form" disabled={isPasswordLoading}>
+                                {isPasswordLoading && <Loader2 className="animate-spin" />}
                                 {t("profile.update_password")}
                             </Button>
                         </CardFooter>

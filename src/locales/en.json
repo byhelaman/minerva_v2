@@ -25,10 +25,12 @@
         "security": "Security",
         "security_desc": "Manage your password and security questions.",
         "current_password": "Current Password",
+        "current_password_desc": "Enter your current password to verify your identity.",
         "new_password": "New Password",
         "confirm_password": "Confirm Password",
         "password_desc": "Password must be at least 8 characters long.",
-        "update_password": "Update Password"
+        "update_password": "Update Password",
+        "confirm_password_desc": "Please confirm your new password."
     },
     "settings": {
         "title": "Settings",

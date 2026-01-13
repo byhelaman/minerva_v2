@@ -36,6 +36,13 @@ export function DocsPage() {
                             Getting Started
                         </a>
                         <a
+                            href="#account"
+                            onClick={(e) => handleScrollTo(e, 'account')}
+                            className="text-sm text-muted-foreground hover:underline"
+                        >
+                            Account & Security
+                        </a>
+                        <a
                             href="#schedules"
                             onClick={(e) => handleScrollTo(e, 'schedules')}
                             className="text-sm text-muted-foreground hover:underline"
@@ -55,6 +62,27 @@ export function DocsPage() {
                             className="text-sm text-muted-foreground hover:underline"
                         >
                             Troubleshooting
+                        </a>
+                        <a
+                            href="#export-import"
+                            onClick={(e) => handleScrollTo(e, 'export-import')}
+                            className="text-sm text-muted-foreground hover:underline"
+                        >
+                            Export & Import
+                        </a>
+                        <a
+                            href="#faq"
+                            onClick={(e) => handleScrollTo(e, 'faq')}
+                            className="text-sm text-muted-foreground hover:underline"
+                        >
+                            FAQ
+                        </a>
+                        <a
+                            href="#support"
+                            onClick={(e) => handleScrollTo(e, 'support')}
+                            className="text-sm text-muted-foreground hover:underline"
+                        >
+                            Contact & Support
                         </a>
                     </nav>
                 </aside>
@@ -79,7 +107,7 @@ export function DocsPage() {
                             <div>
                                 <h2 className="text-lg font-semibold tracking-tight mb-2">Getting Started</h2>
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                                    To get started with Minerva, you'll primarily be working with the Dashboard. Here is a quick overview of the main concepts:
+                                    To get started with Minerva, you'll need to create an account or sign in. Here is a quick overview of the main concepts:
                                 </p>
                                 <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
                                     <Card className="shadow-none">
@@ -106,9 +134,9 @@ export function DocsPage() {
                                     </Card>
                                     <Card className="shadow-none">
                                         <CardHeader>
-                                            <CardTitle className="text-sm font-medium">Settings</CardTitle>
+                                            <CardTitle className="text-sm font-medium">Profile</CardTitle>
                                             <CardDescription className="text-xs text-muted-foreground">
-                                                Configure your Minerva settings to customize your experience.
+                                                Your personal account settings, display name, and security options.
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
@@ -116,6 +144,45 @@ export function DocsPage() {
                                         </CardContent>
                                     </Card>
                                 </div>
+                            </div>
+                        </section>
+
+                        <Separator />
+
+                        {/* Account & Security */}
+                        <section id="account" className="space-y-4">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <h2 className="text-lg font-semibold tracking-tight">Account & Security</h2>
+                                    <Badge variant="outline">New</Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Manage your account settings and security from the Profile page.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Creating an Account</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Click "Sign up" on the login page. You'll receive a 6-digit verification code via email to confirm your account.
+                                    Enter the code to complete registration and access the dashboard.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Updating Your Display Name</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Go to <strong>Profile → Account Information</strong> to change your display name.
+                                    This is the name shown across the application.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Changing Your Password</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Go to <strong>Profile → Security</strong>. For security, you must enter your current password
+                                    before setting a new one. Passwords must be at least 8 characters long.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Forgot Password?</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Click "Forgot password?" on the login page. You'll receive a verification code via email.
+                                    Enter the code to verify your identity, then set a new password.
+                                </p>
                             </div>
                         </section>
 
@@ -129,7 +196,7 @@ export function DocsPage() {
                                     <Badge variant="secondary">Core Feature</Badge>
                                 </div>
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                                    The Home page is where you view and manipulate your schedule data.
+                                    The Dashboard is where you view and manipulate your schedule data.
                                 </p>
 
                                 <h3 className="text-sm font-semibold mb-2">Importing Data</h3>
@@ -156,6 +223,7 @@ export function DocsPage() {
                                 </p>
                                 <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 ml-2">
                                     <li><strong>Appearance:</strong> Toggle between Light, Dark, or System theme.</li>
+                                    <li><strong>Language:</strong> Choose your preferred language (English, Spanish, French).</li>
                                     <li><strong>Export Path:</strong> Choose where your schedule exports are saved by default.</li>
                                     <li><strong>Auto Save:</strong> Enable or disable automatic saving of your work to local storage.</li>
                                     <li><strong>Clear Cache:</strong> Reset the application state if you encounter issues.</li>
@@ -173,10 +241,131 @@ export function DocsPage() {
                                     If you run into issues, try the following:
                                 </p>
                                 <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 ml-2 mt-2">
-                                    <li>Check your internet connection if features rely on external APIs.</li>
+                                    <li>Check your internet connection for features that sync with the server.</li>
                                     <li>Use "Clear Cache" in Settings to reset local data.</li>
                                     <li>Ensure your input Excel files are not corrupted and follow the correct format.</li>
+                                    <li>If you can't log in, try the "Forgot password?" flow to reset your credentials.</li>
+                                    <li>Contact support if issues persist after trying these steps.</li>
                                 </ul>
+                            </div>
+                        </section>
+
+                        <Separator />
+
+                        {/* Export & Import */}
+                        <section id="export-import" className="space-y-4">
+                            <div>
+                                <h2 className="text-lg font-semibold tracking-tight mb-2">Export & Import</h2>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Minerva supports importing and exporting schedule data in Excel format.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Supported Formats</h3>
+                                <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 ml-2 mb-4">
+                                    <li><strong>.xlsx</strong> - Excel 2007+ (recommended)</li>
+                                    <li><strong>.xls</strong> - Legacy Excel format</li>
+                                </ul>
+
+                                <h3 className="text-sm font-semibold mb-2">Import Requirements</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-2">
+                                    Your Excel file should contain the following columns:
+                                </p>
+                                <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 ml-2 mb-4">
+                                    <li><strong>Date</strong> - The date of the schedule entry</li>
+                                    <li><strong>Time</strong> - Start and/or end time</li>
+                                    <li><strong>Location</strong> - Where the event takes place</li>
+                                    <li><strong>Assignee</strong> - Person or resource assigned (optional)</li>
+                                </ul>
+
+                                <h3 className="text-sm font-semibold mb-2">Export Options</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                    You can configure your default export path in Settings → Storage & Export.
+                                    Enable "Quick Export" to skip the file dialog and save directly.
+                                </p>
+                            </div>
+                        </section>
+
+                        <Separator />
+
+                        {/* FAQ */}
+                        <section id="faq" className="space-y-4">
+                            <div>
+                                <h2 className="text-lg font-semibold tracking-tight mb-2">Frequently Asked Questions</h2>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="text-sm font-semibold mb-1">Why can't I edit my email address?</h3>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Your email is tied to your account identity and is used for authentication.
+                                            For security reasons, email changes require contacting support.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-sm font-semibold mb-1">I didn't receive my verification code. What should I do?</h3>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Check your spam/junk folder first. If it's not there, wait a few minutes and try
+                                            clicking "Resend" to get a new code. Make sure you entered the correct email.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-sm font-semibold mb-1">How do I report a bug or request a feature?</h3>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Use the Contact & Support section below to reach our team.
+                                            Please include as much detail as possible about the issue.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-sm font-semibold mb-1">Is my data secure?</h3>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Yes. We use industry-standard encryption and your data is stored securely.
+                                            Passwords are hashed and never stored in plain text.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <Separator />
+
+                        {/* Contact & Support */}
+                        <section id="support" className="space-y-4">
+                            <div>
+                                <h2 className="text-lg font-semibold tracking-tight mb-2">Contact & Support</h2>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Need help? We're here for you.
+                                </p>
+
+                                <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+                                    <Card className="shadow-none">
+                                        <CardHeader>
+                                            <CardTitle className="text-sm font-medium">📧 Email Support</CardTitle>
+                                            <CardDescription className="text-xs text-muted-foreground">
+                                                For general inquiries and support requests.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-sm text-primary">support@minerva-app.com</p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="shadow-none">
+                                        <CardHeader>
+                                            <CardTitle className="text-sm font-medium">🐛 Report Issues</CardTitle>
+                                            <CardDescription className="text-xs text-muted-foreground">
+                                                Found a bug? Let us know so we can fix it.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-sm text-primary">bugs@minerva-app.com</p>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                <p className="text-xs text-muted-foreground mt-4">
+                                    Response times are typically within 24-48 business hours.
+                                </p>
                             </div>
                         </section>
                     </div>
