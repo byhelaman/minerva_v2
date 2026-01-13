@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Session, User } from "@supabase/supabase-js";
+import { Session, User, AuthChangeEvent } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { jwtDecode } from "jwt-decode";
 
 // Tipos
 export interface Profile {
@@ -10,6 +11,14 @@ export interface Profile {
     role: string;
     hierarchy_level: number;
     permissions: string[];
+}
+
+// Claims custom en el JWT
+interface JWTClaims {
+    user_role?: string;  // Renombrado de 'role' para evitar conflicto con rol de PostgreSQL
+    hierarchy_level?: number;
+    sub: string;
+    email?: string;
 }
 
 interface AuthContextType {
@@ -33,98 +42,101 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Extraer profile desde el JWT + user metadata (sin llamar RPC)
+const extractProfileFromSession = (session: Session): Profile => {
+    const user = session.user;
+
+    // Decodificar JWT para obtener custom claims
+    let claims: JWTClaims = { sub: user.id };
+    try {
+        claims = jwtDecode<JWTClaims>(session.access_token);
+    } catch (err) {
+        console.warn("[Auth] Error decoding JWT:", err);
+    }
+
+    // Construir profile desde JWT claims + user metadata
+    const hierarchyLevel = claims.hierarchy_level ?? 0;
+    const role = claims.user_role ?? "viewer";
+
+    // Calcular permisos basados en hierarchy_level
+    const permissions: string[] = [];
+    if (hierarchyLevel >= 10) permissions.push("schedules.read");
+    if (hierarchyLevel >= 50) {
+        permissions.push("schedules.write", "zoom.search", "zoom.links");
+    }
+    if (hierarchyLevel >= 80) {
+        permissions.push("users.read", "users.write", "settings.read");
+    }
+    if (hierarchyLevel >= 100) {
+        permissions.push("settings.write");
+    }
+
+    return {
+        id: user.id,
+        email: user.email || "",
+        display_name: user.user_metadata?.display_name || null,
+        role,
+        hierarchy_level: hierarchyLevel,
+        permissions,
+    };
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Obtener perfil del usuario desde Supabase con timeout
-    const fetchProfile = async (): Promise<Profile | null> => {
-        try {
-            // Timeout de 3 segundos para el RPC
-            const rpcPromise = supabase.rpc("get_my_profile");
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("RPC timeout - function may not exist")), 3000)
-            );
+    // Handler centralizado para cambios de sesión
+    const handleSessionChange = async (
+        event: AuthChangeEvent,
+        newSession: Session | null
+    ) => {
+        console.log(`[Auth] Event: ${event}`, newSession ? "with session" : "no session");
 
-            const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as { data: Profile | null; error: Error | null };
+        switch (event) {
+            case "INITIAL_SESSION":
+            case "SIGNED_IN":
+            case "TOKEN_REFRESHED":
+            case "PASSWORD_RECOVERY":
+            case "USER_UPDATED":
+                setSession(newSession);
+                setUser(newSession?.user ?? null);
 
-            if (error) {
-                return null;
-            }
-            return data as Profile;
-        } catch {
-            // Devolver perfil vacío para que la app funcione
-            return null;
+                if (newSession) {
+                    // Extraer profile del JWT (instantáneo, sin RPC)
+                    const profileData = extractProfileFromSession(newSession);
+                    setProfile(profileData);
+                } else {
+                    setProfile(null);
+                }
+                setIsLoading(false);
+                break;
+
+            case "SIGNED_OUT":
+                setSession(null);
+                setUser(null);
+                setProfile(null);
+                setIsLoading(false);
+                break;
+
+            default:
+                console.log(`[Auth] Unhandled event: ${event}`);
+                if (newSession) {
+                    setSession(newSession);
+                    setUser(newSession.user);
+                }
         }
     };
 
     // Inicializar estado de autenticación
     useEffect(() => {
         let mounted = true;
-        let initialSessionLoaded = false;
 
-        // Obtener sesión inicial - usando el patrón recomendado por Supabase
-        supabase.auth.getSession().then(async ({ data: { session } }) => {
-            if (!mounted) return;
-            initialSessionLoaded = true;
-
-            setSession(session);
-            setUser(session?.user ?? null);
-
-            if (session?.user) {
-                const profileData = await fetchProfile();
-                if (mounted) {
-                    setProfile(profileData);
-                    setIsLoading(false);
-                }
-            } else {
-                setIsLoading(false);
-            }
-        });
-
-        // Escuchar cambios de autenticación
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                // Ignorar eventos antes de que la sesión inicial se haya cargado
-                if (!initialSessionLoaded && event === "SIGNED_IN") {
-                    return;
-                }
-
-                // Manejar cierre de sesión
-                if (event === "SIGNED_OUT") {
-                    setSession(null);
-                    setUser(null);
-                    setProfile(null);
-                    if (mounted) setIsLoading(false);
-                    return;
-                }
-
-                // Manejar refresh de token fallido (session null = refresh token expiró)
-                if (event === "TOKEN_REFRESHED" && !session) {
-                    setSession(null);
-                    setUser(null);
-                    setProfile(null);
-                    if (mounted) setIsLoading(false);
-                    return;
-                }
-
-                setSession(session);
-                setUser(session?.user ?? null);
-
-                if (session?.user) {
-                    const profileData = await fetchProfile();
-                    if (mounted) {
-                        setProfile(profileData);
-                    }
-                } else {
-                    setProfile(null);
-                }
-
-                if (mounted) {
-                    setIsLoading(false);
-                }
+                if (!mounted) return;
+                await handleSessionChange(event, session);
             }
         );
 
@@ -134,25 +146,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    // Iniciar sesión con email/contraseña
+    // Iniciar sesión
     const signIn = async (email: string, password: string) => {
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         return { error: error as Error | null };
     };
 
-    // Registrar usuario con email/contraseña
+    // Registrar usuario
     const signUp = async (email: string, password: string, displayName?: string) => {
         const { error } = await supabase.auth.signUp({
             email,
             password,
-            options: {
-                data: {
-                    display_name: displayName || null,
-                },
-            },
+            options: { data: { display_name: displayName || null } },
         });
         return { error: error as Error | null };
     };
@@ -160,10 +165,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Cerrar sesión
     const signOut = async () => {
         await supabase.auth.signOut();
-        setProfile(null);
     };
 
-    // Enviar OTP para reset de contraseña
+    // Enviar email de reset
     const sendResetPasswordEmail = async (email: string) => {
         const { error } = await supabase.auth.resetPasswordForEmail(email);
         return { error: error as Error | null };
@@ -171,82 +175,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Verificar OTP
     const verifyOtp = async (email: string, token: string, type: "email" | "signup" | "recovery") => {
-        const { data, error } = await supabase.auth.verifyOtp({
-            email,
-            token,
-            type,
-        });
+        const { data, error } = await supabase.auth.verifyOtp({ email, token, type });
         return { data, error: error as Error | null };
     };
 
     // Actualizar contraseña
     const updatePassword = async (password: string) => {
-        const { error } = await supabase.auth.updateUser({
-            password,
-        });
+        const { error } = await supabase.auth.updateUser({ password });
         return { error: error as Error | null };
     };
 
-    // Verificar si el usuario tiene un permiso específico
+    // Verificar permiso
     const hasPermission = (permission: string): boolean => {
         if (!profile) return false;
         return profile.permissions?.includes(permission) ?? false;
     };
 
-    // Verificar si el usuario es admin o superior
+    // Verificar si es admin
     const isAdmin = (): boolean => {
         return (profile?.hierarchy_level ?? 0) >= 80;
     };
 
-    // Verificar si el usuario es super_admin
+    // Verificar si es super_admin
     const isSuperAdmin = (): boolean => {
         return (profile?.hierarchy_level ?? 0) >= 100;
     };
 
-    // Actualizar display name del usuario
+    // Actualizar display name
     const updateDisplayName = async (displayName: string) => {
-        // Actualizar user_metadata en auth.users
-        const { error: authError } = await supabase.auth.updateUser({
-            data: { display_name: displayName },
-        });
-
-        if (authError) {
-            return { error: authError as Error };
-        }
-
-        // Actualizar la tabla profiles usando RPC (bypasses RLS)
+        // 1. Primero actualizar en profiles via RPC (mientras la sesión es estable)
         const { error: profileError } = await supabase.rpc("update_my_display_name", {
             new_display_name: displayName,
         });
+        if (profileError) return { error: profileError as Error };
 
-        if (profileError) {
-            return { error: profileError as Error };
+        // 2. Luego actualizar en auth.users (esto dispara USER_UPDATED)
+        const { error: authError } = await supabase.auth.updateUser({
+            data: { display_name: displayName },
+        });
+        if (authError) return { error: authError as Error };
+
+        // 3. Refrescar sesión para obtener nuevo JWT con metadata actualizado
+        const { data, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) return { error: refreshError as Error };
+
+        if (data.session) {
+            const newProfile = extractProfileFromSession(data.session);
+            setProfile(newProfile);
         }
-
-        // Refrescar el perfil para obtener los datos actualizados
-        const profileData = await fetchProfile();
-        setProfile(profileData);
 
         return { error: null };
     };
 
-    // Refrescar perfil manualmente
+    // Refrescar perfil (refresca la sesión para obtener claims actualizados)
     const refreshProfile = async () => {
-        const profileData = await fetchProfile();
-        setProfile(profileData);
+        const { data } = await supabase.auth.refreshSession();
+        if (data.session) {
+            const newProfile = extractProfileFromSession(data.session);
+            setProfile(newProfile);
+        }
     };
 
-    // Verificar contraseña actual (re-autenticación)
+    // Verificar contraseña actual
     const verifyCurrentPassword = async (password: string) => {
         if (!profile?.email) {
             return { error: new Error("No email found") };
         }
-
         const { error } = await supabase.auth.signInWithPassword({
             email: profile.email,
             password,
         });
-
         return { error: error as Error | null };
     };
 

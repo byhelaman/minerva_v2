@@ -51,25 +51,82 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     },
 });
 
-// Listener para refrescar sesión cuando la ventana vuelve a estar activa
-// Útil cuando la app estuvo en background por mucho tiempo
-if (typeof window !== "undefined") {
+/**
+ * Gestión de auto-refresh para aplicaciones desktop (Tauri)
+ * 
+ * IMPORTANTE: En entornos non-browser como Tauri, Supabase NO puede detectar
+ * automáticamente si la app está en primer plano o en background.
+ * 
+ * Según la documentación oficial:
+ * - Llamar startAutoRefresh() cuando la app está en foco
+ * - Llamar stopAutoRefresh() cuando la app pierde foco
+ * 
+ * Esto optimiza recursos y previene refresh innecesarios en background.
+ */
+
+// Variable para tracking del estado de auto-refresh
+let isAutoRefreshActive = false;
+
+/**
+ * Inicia el auto-refresh de sesión
+ * Solo debe llamarse cuando la app está en primer plano
+ */
+export const startSessionRefresh = () => {
+    if (!isAutoRefreshActive) {
+        supabase.auth.startAutoRefresh();
+        isAutoRefreshActive = true;
+        console.log("[Supabase] Auto-refresh started");
+    }
+};
+
+/**
+ * Detiene el auto-refresh de sesión
+ * Debe llamarse cuando la app pasa a background
+ */
+export const stopSessionRefresh = () => {
+    if (isAutoRefreshActive) {
+        supabase.auth.stopAutoRefresh();
+        isAutoRefreshActive = false;
+        console.log("[Supabase] Auto-refresh stopped");
+    }
+};
+
+// Iniciar auto-refresh al cargar (la app inicia en foreground)
+startSessionRefresh();
+
+// Listener para manejar cambios de visibilidad del documento
+// Esto funciona en Tauri cuando la ventana se minimiza/restaura
+if (typeof window !== "undefined" && typeof document !== "undefined") {
     document.addEventListener("visibilitychange", async () => {
         if (document.visibilityState === "visible") {
-            // Intentar refrescar la sesión cuando la app vuelve a primer plano
+            // App vuelve a primer plano
+            startSessionRefresh();
+
+            // Verificar si la sesión necesita refresh proactivo
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-                // Si hay sesión, verificar si necesita refresh
                 const expiresAt = session.expires_at;
                 const now = Math.floor(Date.now() / 1000);
                 const fiveMinutes = 5 * 60;
 
                 // Si el token expira en menos de 5 minutos, refrescar proactivamente
                 if (expiresAt && (expiresAt - now) < fiveMinutes) {
+                    console.log("[Supabase] Token expiring soon - refreshing proactively");
                     await supabase.auth.refreshSession();
                 }
             }
+        } else {
+            // App pasa a background
+            stopSessionRefresh();
         }
     });
-}
 
+    // También escuchar eventos de foco de ventana (más confiable en algunas situaciones)
+    window.addEventListener("focus", () => {
+        startSessionRefresh();
+    });
+
+    window.addEventListener("blur", () => {
+        stopSessionRefresh();
+    });
+}
