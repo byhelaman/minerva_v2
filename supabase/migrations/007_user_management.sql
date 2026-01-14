@@ -535,3 +535,59 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_role_permissions(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.assign_role_permission(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.remove_role_permission(TEXT, TEXT) TO authenticated;
+
+-- =============================================
+-- API: Set user role after creation (admin only)
+-- Usado después de crear un usuario via signUp
+-- =============================================
+CREATE OR REPLACE FUNCTION public.set_new_user_role(
+    target_user_id UUID,
+    target_role TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    caller_level int;
+    target_role_level int;
+BEGIN
+    -- Verificar que el usuario tiene permiso admin
+    caller_level := COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0);
+    
+    IF caller_level < 80 THEN
+        RAISE EXCEPTION 'Permission denied: requires admin privileges';
+    END IF;
+    
+    -- Obtener nivel del rol objetivo
+    SELECT hierarchy_level INTO target_role_level
+    FROM public.roles WHERE name = target_role;
+    
+    IF target_role_level IS NULL THEN
+        RAISE EXCEPTION 'Role not found: %', target_role;
+    END IF;
+    
+    -- No se puede asignar un rol con nivel >= al tuyo
+    IF target_role_level >= caller_level THEN
+        RAISE EXCEPTION 'Permission denied: cannot assign role with equal or higher level';
+    END IF;
+    
+    -- Actualizar el rol del nuevo usuario
+    UPDATE public.profiles
+    SET role = target_role
+    WHERE id = target_user_id;
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'User not found: %', target_user_id;
+    END IF;
+    
+    RETURN json_build_object(
+        'success', true,
+        'user_id', target_user_id,
+        'role', target_role
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_new_user_role(UUID, TEXT) TO authenticated;

@@ -85,23 +85,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
         console.log(`[Auth] Event: ${event}`, newSession ? "with session" : "no session");
 
+        // Helper para procesar sesión válida
+        const processValidSession = (session: Session) => {
+            setSession(session);
+            setUser(session.user);
+            const profileData = extractProfileFromSession(session);
+            setProfile(profileData);
+            setIsLoading(false);
+        };
+
         switch (event) {
             case "INITIAL_SESSION":
+                // Health check: Verificar que el usuario aún existe en la DB
+                if (newSession) {
+                    const exists = await verifyUserExists(newSession.user.id);
+                    if (!exists) {
+                        console.log('[Auth] User no longer exists, forcing sign out');
+                        await supabase.auth.signOut();
+                        setIsLoading(false);
+                        return;
+                    }
+                    processValidSession(newSession);
+                } else {
+                    setProfile(null);
+                    setIsLoading(false);
+                }
+                break;
+
             case "SIGNED_IN":
             case "TOKEN_REFRESHED":
             case "PASSWORD_RECOVERY":
             case "USER_UPDATED":
-                setSession(newSession);
-                setUser(newSession?.user ?? null);
-
                 if (newSession) {
-                    // Extraer profile del JWT (instantáneo, sin RPC)
-                    const profileData = extractProfileFromSession(newSession);
-                    setProfile(profileData);
+                    processValidSession(newSession);
                 } else {
+                    setSession(null);
+                    setUser(null);
                     setProfile(null);
+                    setIsLoading(false);
                 }
-                setIsLoading(false);
                 break;
 
             case "SIGNED_OUT":
@@ -136,6 +158,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             subscription.unsubscribe();
         };
     }, []);
+
+    // Realtime: Escuchar cambios en el perfil del usuario actual
+    // Si el admin cambia el rol o elimina al usuario, reaccionar inmediatamente
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const channel = supabase
+            .channel(`profile-changes-${user.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*', // INSERT, UPDATE, DELETE
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: `id=eq.${user.id}`,
+                },
+                async (payload) => {
+                    console.log('[Auth] Realtime profile change:', payload.eventType);
+
+                    if (payload.eventType === 'DELETE') {
+                        // Usuario eliminado → logout inmediato
+                        console.log('[Auth] User deleted, forcing sign out');
+                        await supabase.auth.signOut();
+                        return;
+                    }
+
+                    if (payload.eventType === 'UPDATE') {
+                        // Rol o permisos cambiaron → refrescar sesión para nuevo JWT
+                        const oldRole = profile?.role;
+                        const newRole = (payload.new as any)?.role;
+
+                        if (oldRole !== newRole) {
+                            console.log('[Auth] Role changed, refreshing session');
+                            await supabase.auth.refreshSession();
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.id, profile?.role]);
+
+    // Health check: Verificar que el usuario existe al restaurar sesión
+    const verifyUserExists = async (userId: string): Promise<boolean> => {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', userId)
+            .single();
+
+        return !error && !!data;
+    };
 
     // Iniciar sesión
     const signIn = async (email: string, password: string) => {

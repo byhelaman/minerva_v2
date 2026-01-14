@@ -45,13 +45,21 @@ type Step = "form" | "otp";
 interface SignupDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /** Si se proporciona, inicia directamente en el paso OTP con este email */
+    initialEmail?: string;
+    initialStep?: Step;
 }
 
-export function SignupDialog({ open, onOpenChange }: SignupDialogProps) {
+export function SignupDialog({
+    open,
+    onOpenChange,
+    initialEmail,
+    initialStep = "form"
+}: SignupDialogProps) {
     const navigate = useNavigate();
     const { signUp, verifyOtp } = useAuth();
-    const [step, setStep] = useState<Step>("form");
-    const [email, setEmail] = useState("");
+    const [step, setStep] = useState<Step>(initialStep);
+    const [email, setEmail] = useState(initialEmail || "");
     const [isLoading, setIsLoading] = useState(false);
     const [resendCountdown, setResendCountdown] = useState(0);
 
@@ -82,12 +90,22 @@ export function SignupDialog({ open, onOpenChange }: SignupDialogProps) {
         defaultValues: { otp: "" },
     });
 
+    // Sincronizar con props iniciales cuando cambian
+    useEffect(() => {
+        if (open && initialStep) {
+            setStep(initialStep);
+        }
+        if (open && initialEmail) {
+            setEmail(initialEmail);
+        }
+    }, [open, initialStep, initialEmail]);
+
     // Cleanup on close
     const handleOpenChange = (newOpen: boolean) => {
         if (!newOpen) {
             setTimeout(() => {
-                setStep("form");
-                setEmail("");
+                setStep(initialStep || "form");
+                setEmail(initialEmail || "");
                 signupForm.reset();
                 otpForm.reset();
             }, 300);

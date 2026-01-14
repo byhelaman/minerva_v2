@@ -144,6 +144,7 @@ export function EditRoleDialog({ open, onOpenChange, role, isEditing, onSubmit }
                             <FieldLabel htmlFor="edit-description">Description</FieldLabel>
                             <Textarea
                                 id="edit-description"
+                                placeholder="What can this role do?"
                                 {...form.register("description")}
                                 rows={4}
                                 className="min-h-20 resize-none"

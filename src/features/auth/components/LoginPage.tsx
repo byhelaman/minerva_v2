@@ -53,6 +53,9 @@ function LoginForm({
     const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
     const [isSignupOpen, setIsSignupOpen] = useState(false);
 
+    // Estado para verificación de email (abre SignupDialog en modo OTP)
+    const [pendingEmailForOtp, setPendingEmailForOtp] = useState<string | null>(null);
+
     const from = (location.state as { from?: Location })?.from?.pathname || "/";
 
     const {
@@ -89,6 +92,13 @@ function LoginForm({
 
         const { error } = await signIn(data.email, data.password);
         if (error) {
+            // Detectar si el error es por email no confirmado
+            if (error.message.toLowerCase().includes('email not confirmed')) {
+                setPendingEmailForOtp(data.email);
+                toast.info('Please verify your email to continue');
+                return;
+            }
+
             // Registrar intento fallido
             const nowLocked = recordFailedAttempt();
 
@@ -116,10 +126,10 @@ function LoginForm({
 
     // Redirigir si ya hay un usuario y NO estamos en recovery
     useEffect(() => {
-        if (user && !isForgotPasswordOpen) {
+        if (user && !isForgotPasswordOpen && !pendingEmailForOtp) {
             navigate(from, { replace: true });
         }
-    }, [user, isForgotPasswordOpen, navigate, from]);
+    }, [user, isForgotPasswordOpen, pendingEmailForOtp, navigate, from]);
 
 
     return (
@@ -132,7 +142,7 @@ function LoginForm({
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleSubmit(onSubmit)}>
+                    <form onSubmit={handleSubmit(onSubmit)} noValidate>
                         <FieldGroup>
                             <Field data-invalid={!!errors.email}>
                                 <FieldLabel htmlFor="email">Email</FieldLabel>
@@ -200,8 +210,13 @@ function LoginForm({
                 defaultEmail={watch("email")}
             />
             <SignupDialog
-                open={isSignupOpen}
-                onOpenChange={setIsSignupOpen}
+                open={isSignupOpen || !!pendingEmailForOtp}
+                onOpenChange={(open) => {
+                    setIsSignupOpen(open);
+                    if (!open) setPendingEmailForOtp(null);
+                }}
+                initialEmail={pendingEmailForOtp || undefined}
+                initialStep={pendingEmailForOtp ? "otp" : "form"}
             />
         </div >
     );

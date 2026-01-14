@@ -33,7 +33,6 @@ import {
     Role,
     CreateRoleFormData,
     EditRoleFormData,
-    isSystemRole,
     useRolesData,
     useRolePermissions,
     RolesList,
@@ -69,10 +68,10 @@ export function ManageRolesModal({ open, onOpenChange }: ManageRolesModalProps) 
     const { roles, permissions, isLoading, error, refetch } = useRolesData(open);
 
     const currentRole = roles.find(r => r.name === selectedRole);
-    const isCurrentSystemRole = currentRole ? isSystemRole(currentRole.name) : true;
+    const isSuperAdminRole = currentRole?.name === 'super_admin';
 
     const { rolePermissions, isLoadingPerms, isSavingPerm, togglePermission } =
-        useRolePermissions(selectedRole, isCurrentSystemRole);
+        useRolePermissions(selectedRole, isSuperAdminRole);
 
     // Auto-select first role when data loads
     if (roles.length > 0 && !selectedRole) {
@@ -83,7 +82,10 @@ export function ManageRolesModal({ open, onOpenChange }: ManageRolesModalProps) 
         return isSuperAdmin() && roleLevel < myLevel;
     };
 
-    const canEditPermissions = currentRole && !isCurrentSystemRole && canModifyRole(currentRole.hierarchy_level);
+    // Permitir edición de permisos para cualquier rol con nivel menor (excepto super_admin)
+    const canEditPermissions = currentRole
+        && currentRole.name !== 'super_admin'
+        && canModifyRole(currentRole.hierarchy_level);
 
     const handleCreateRole = async (data: CreateRoleFormData) => {
         setIsCreating(true);
@@ -256,7 +258,7 @@ export function ManageRolesModal({ open, onOpenChange }: ManageRolesModalProps) 
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Role</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete the role "{deleteRoleName}"?
+                            Are you sure you want to delete the role <span className="font-semibold">{deleteRoleName}</span>?
                             This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>

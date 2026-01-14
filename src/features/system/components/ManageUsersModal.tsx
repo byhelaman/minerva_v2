@@ -1,17 +1,28 @@
 import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2, Trash2, CircleAlert } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Search, Loader2, Trash2, CircleAlert, Plus } from "lucide-react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
+import {
+    Field,
+    FieldError,
+    FieldGroup,
+    FieldLabel,
+} from "@/components/ui/field";
 import {
     Select,
     SelectContent,
@@ -52,6 +63,16 @@ interface Role {
     hierarchy_level: number;
 }
 
+// Esquema de validación para crear usuario
+const createUserSchema = z.object({
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    displayName: z.string().optional(),
+    role: z.string().min(1, "Role is required"),
+});
+
+type CreateUserFormData = z.infer<typeof createUserSchema>;
+
 export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) {
     const { profile } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
@@ -64,7 +85,24 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
     const [deleteConfirmUser, setDeleteConfirmUser] = useState<User | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Create user state
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+
     const myLevel = profile?.hierarchy_level ?? 0;
+
+    // Create user form
+    const createForm = useForm<CreateUserFormData>({
+        resolver: zodResolver(createUserSchema),
+        defaultValues: { email: '', password: '', displayName: '', role: 'viewer' },
+    });
+
+    // Reset form when dialog closes
+    useEffect(() => {
+        if (!isCreateOpen) {
+            createForm.reset();
+        }
+    }, [isCreateOpen]);
 
     // Fetch users and roles when modal opens
     useEffect(() => {
@@ -139,6 +177,42 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
         } finally {
             setIsDeleting(false);
             setDeleteConfirmUser(null);
+        }
+    };
+
+    // Crear nuevo usuario
+    const handleCreateUser = async (data: CreateUserFormData) => {
+        setIsCreating(true);
+        try {
+            // 1. Crear usuario con signUp
+            const { data: authData, error: signUpError } = await supabase.auth.signUp({
+                email: data.email,
+                password: data.password,
+                options: {
+                    data: { display_name: data.displayName || null }
+                }
+            });
+
+            if (signUpError) throw signUpError;
+            if (!authData.user) throw new Error('Failed to create user');
+
+            // 2. Asignar rol usando RPC (si no es viewer, que es el default)
+            if (data.role !== 'viewer') {
+                const { error: roleError } = await supabase.rpc('set_new_user_role', {
+                    target_user_id: authData.user.id,
+                    target_role: data.role
+                });
+                if (roleError) throw roleError;
+            }
+
+            toast.success('User created successfully');
+            setIsCreateOpen(false);
+            fetchData(); // Refrescar lista
+        } catch (err: any) {
+            console.error('Error creating user:', err);
+            toast.error(err.message || 'Failed to create user');
+        } finally {
+            setIsCreating(false);
         }
     };
 
@@ -254,6 +328,7 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
                                                     variant="secondary"
                                                     size="icon-sm"
                                                     onClick={() => setDeleteConfirmUser(user)}
+                                                    className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive"
                                                 >
                                                     <Trash2 />
                                                 </Button>
@@ -274,11 +349,95 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
                             <p className="text-sm text-muted-foreground">
                                 {filteredUsers.length} user(s)
                             </p>
-                            <Button variant="outline" size="sm" disabled>
-                                + Invite User
-                            </Button>
+                            {myLevel >= 80 && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setIsCreateOpen(true)}
+                                >
+                                    <Plus />
+                                    Create User
+                                </Button>
+                            )}
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Create User Dialog */}
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Create User</DialogTitle>
+                        <DialogDescription>
+                            Create a new user account and assign a role.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={createForm.handleSubmit(handleCreateUser)} noValidate>
+                        <FieldGroup>
+                            <Field data-invalid={!!createForm.formState.errors.email}>
+                                <FieldLabel htmlFor="user-email">Email</FieldLabel>
+                                <Input
+                                    id="user-email"
+                                    type="email"
+                                    placeholder="user@example.com"
+                                    {...createForm.register("email")}
+                                    aria-invalid={!!createForm.formState.errors.email}
+                                    disabled={isCreating}
+                                />
+                                <FieldError errors={[createForm.formState.errors.email]} />
+                            </Field>
+                            <Field data-invalid={!!createForm.formState.errors.password}>
+                                <FieldLabel htmlFor="user-password">Password</FieldLabel>
+                                <Input
+                                    id="user-password"
+                                    type="password"
+                                    {...createForm.register("password")}
+                                    aria-invalid={!!createForm.formState.errors.password}
+                                    disabled={isCreating}
+                                />
+                                <FieldError errors={[createForm.formState.errors.password]} />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="user-displayname">Display Name (optional)</FieldLabel>
+                                <Input
+                                    id="user-displayname"
+                                    placeholder="John Doe"
+                                    {...createForm.register("displayName")}
+                                    disabled={isCreating}
+                                />
+                            </Field>
+                            <Field data-invalid={!!createForm.formState.errors.role}>
+                                <FieldLabel htmlFor="user-role">Role</FieldLabel>
+                                <Select
+                                    value={createForm.watch("role")}
+                                    onValueChange={(value) => createForm.setValue("role", value)}
+                                    disabled={isCreating}
+                                >
+                                    <SelectTrigger id="user-role">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {getAssignableRoles().map((role) => (
+                                            <SelectItem key={role.name} value={role.name}>
+                                                {role.name} (Level {role.hierarchy_level})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <FieldError errors={[createForm.formState.errors.role]} />
+                            </Field>
+                        </FieldGroup>
+                        <DialogFooter className="mt-6">
+                            <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isCreating}>
+                                {isCreating && <Loader2 className="animate-spin" />}
+                                Create User
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
