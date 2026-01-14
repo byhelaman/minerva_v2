@@ -17,6 +17,7 @@ export interface Profile {
 interface JWTClaims {
     user_role?: string;  // Renombrado de 'role' para evitar conflicto con rol de PostgreSQL
     hierarchy_level?: number;
+    permissions?: string[];  // Permisos del rol desde role_permissions
     sub: string;
     email?: string;
 }
@@ -58,18 +59,8 @@ const extractProfileFromSession = (session: Session): Profile => {
     const hierarchyLevel = claims.hierarchy_level ?? 0;
     const role = claims.user_role ?? "viewer";
 
-    // Calcular permisos basados en hierarchy_level
-    const permissions: string[] = [];
-    if (hierarchyLevel >= 10) permissions.push("schedules.read");
-    if (hierarchyLevel >= 50) {
-        permissions.push("schedules.write", "zoom.search", "zoom.links");
-    }
-    if (hierarchyLevel >= 80) {
-        permissions.push("users.read", "users.write", "settings.read");
-    }
-    if (hierarchyLevel >= 100) {
-        permissions.push("settings.write");
-    }
+    // Leer permisos directamente del JWT (vienen de role_permissions)
+    const permissions = claims.permissions ?? ["schedules.read"];
 
     return {
         id: user.id,

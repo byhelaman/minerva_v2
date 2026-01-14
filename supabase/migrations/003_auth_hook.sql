@@ -21,6 +21,7 @@ DECLARE
     claims jsonb;
     user_role text;
     user_hierarchy_level int;
+    user_permissions text[];
 BEGIN
     -- Obtener rol y nivel del usuario desde profiles + roles
     SELECT p.role, r.hierarchy_level
@@ -36,12 +37,20 @@ BEGIN
     -- NOTA: Usamos 'user_role' en lugar de 'role' para evitar conflicto
     -- con el rol de PostgreSQL que Supabase usa internamente
     IF user_role IS NOT NULL THEN
+        -- Obtener permisos del rol desde role_permissions
+        SELECT array_agg(rp.permission)
+        INTO user_permissions
+        FROM public.role_permissions rp
+        WHERE rp.role = user_role;
+
         claims := jsonb_set(claims, '{user_role}', to_jsonb(user_role));
         claims := jsonb_set(claims, '{hierarchy_level}', to_jsonb(user_hierarchy_level));
+        claims := jsonb_set(claims, '{permissions}', to_jsonb(COALESCE(user_permissions, ARRAY[]::text[])));
     ELSE
         -- Usuario sin perfil (edge case: signup en progreso)
         claims := jsonb_set(claims, '{user_role}', '"viewer"');
         claims := jsonb_set(claims, '{hierarchy_level}', '10');
+        claims := jsonb_set(claims, '{permissions}', '["schedules.read"]');
     END IF;
 
     -- Actualizar event con los nuevos claims
@@ -58,9 +67,10 @@ GRANT EXECUTE ON FUNCTION public.custom_access_token_hook TO supabase_auth_admin
 -- Revocar acceso público (seguridad)
 REVOKE EXECUTE ON FUNCTION public.custom_access_token_hook FROM authenticated, anon, public;
 
--- El hook necesita leer profiles y roles
+-- El hook necesita leer profiles, roles y role_permissions
 GRANT SELECT ON TABLE public.profiles TO supabase_auth_admin;
 GRANT SELECT ON TABLE public.roles TO supabase_auth_admin;
+GRANT SELECT ON TABLE public.role_permissions TO supabase_auth_admin;
 
 -- =============================================
 -- PASO MANUAL REQUERIDO:

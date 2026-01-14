@@ -400,3 +400,138 @@ GRANT EXECUTE ON FUNCTION public.get_all_permissions() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_role(TEXT, TEXT, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.update_role(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_role(TEXT) TO authenticated;
+
+-- =============================================
+-- API: Get permissions for a role (authenticated)
+-- =============================================
+CREATE OR REPLACE FUNCTION public.get_role_permissions(target_role TEXT)
+RETURNS TABLE (permission TEXT)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT rp.permission
+    FROM public.role_permissions rp
+    WHERE rp.role = target_role
+    ORDER BY rp.permission;
+$$;
+
+-- =============================================
+-- API: Assign permission to role (super_admin only)
+-- =============================================
+CREATE OR REPLACE FUNCTION public.assign_role_permission(
+    target_role TEXT,
+    permission_name TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    caller_level int;
+    target_role_level int;
+BEGIN
+    caller_level := COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0);
+    
+    -- Solo super_admin puede asignar permisos
+    IF caller_level < 100 THEN
+        RAISE EXCEPTION 'Permission denied: requires super_admin privileges';
+    END IF;
+    
+    -- Verificar que el rol existe y obtener su nivel
+    SELECT hierarchy_level INTO target_role_level
+    FROM public.roles WHERE name = target_role;
+    
+    IF target_role_level IS NULL THEN
+        RAISE EXCEPTION 'Role not found: %', target_role;
+    END IF;
+    
+    -- Proteger roles del sistema
+    IF target_role IN ('super_admin', 'admin', 'operator', 'viewer') THEN
+        RAISE EXCEPTION 'Cannot modify permissions of system role: %', target_role;
+    END IF;
+    
+    -- No se pueden editar permisos de roles con nivel >= al tuyo
+    IF target_role_level >= caller_level THEN
+        RAISE EXCEPTION 'Permission denied: cannot modify role with equal or higher level';
+    END IF;
+    
+    -- Verificar que el permiso existe
+    IF NOT EXISTS (SELECT 1 FROM public.permissions WHERE name = permission_name) THEN
+        RAISE EXCEPTION 'Permission not found: %', permission_name;
+    END IF;
+    
+    -- Insertar (ignorar si ya existe)
+    INSERT INTO public.role_permissions (role, permission)
+    VALUES (target_role, permission_name)
+    ON CONFLICT (role, permission) DO NOTHING;
+    
+    RETURN json_build_object(
+        'success', true,
+        'role', target_role,
+        'permission', permission_name
+    );
+END;
+$$;
+
+-- =============================================
+-- API: Remove permission from role (super_admin only)
+-- =============================================
+CREATE OR REPLACE FUNCTION public.remove_role_permission(
+    target_role TEXT,
+    permission_name TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    caller_level int;
+    target_role_level int;
+BEGIN
+    caller_level := COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0);
+    
+    -- Solo super_admin puede quitar permisos
+    IF caller_level < 100 THEN
+        RAISE EXCEPTION 'Permission denied: requires super_admin privileges';
+    END IF;
+    
+    -- Verificar que el rol existe y obtener su nivel
+    SELECT hierarchy_level INTO target_role_level
+    FROM public.roles WHERE name = target_role;
+    
+    IF target_role_level IS NULL THEN
+        RAISE EXCEPTION 'Role not found: %', target_role;
+    END IF;
+    
+    -- Proteger roles del sistema
+    IF target_role IN ('super_admin', 'admin', 'operator', 'viewer') THEN
+        RAISE EXCEPTION 'Cannot modify permissions of system role: %', target_role;
+    END IF;
+    
+    -- No se pueden editar permisos de roles con nivel >= al tuyo
+    IF target_role_level >= caller_level THEN
+        RAISE EXCEPTION 'Permission denied: cannot modify role with equal or higher level';
+    END IF;
+    
+    -- Eliminar el permiso
+    DELETE FROM public.role_permissions
+    WHERE role = target_role AND permission = permission_name;
+    
+    RETURN json_build_object(
+        'success', true,
+        'role', target_role,
+        'permission_removed', permission_name
+    );
+END;
+$$;
+
+-- =============================================
+-- Permisos para role_permissions management
+-- =============================================
+GRANT EXECUTE ON FUNCTION public.get_role_permissions(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.assign_role_permission(TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.remove_role_permission(TEXT, TEXT) TO authenticated;

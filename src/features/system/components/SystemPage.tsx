@@ -68,7 +68,7 @@ export function SystemPage() {
                             <div className="flex items-center justify-between">
                                 <div className="space-y-0.5">
                                     <p className="font-medium text-sm">Total Users</p>
-                                    <p className="text-2xl font-semibold">
+                                    <p className="text-2xl font-semibold h-8 flex items-center">
                                         {isLoadingCount ? (
                                             <Loader2 className="size-5 animate-spin" />
                                         ) : userCount !== null ? (
