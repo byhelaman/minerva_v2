@@ -45,6 +45,18 @@ Execute each file in Supabase **SQL Editor**, following this order:
 | 4 | `004_functions.sql` | RPCs: get_my_profile, update_my_display_name |
 | 5 | `005_policies.sql` | RLS policies using JWT claims |
 | 6 | `006_security_triggers.sql` | Privilege escalation prevention trigger |
+| 7 | `007_user_management.sql` | User Management RPCs (`create_user`, `delete_user`) |
+| 8 | `008_realtime_security.sql` | Enable Realtime for specific roles |
+| 9 | `009_zoom_connection.sql` | Zoom Integration Tables & Vault Setup |
+| 10 | `010_fix_zoom_rpc.sql` | Robust credential storage RPC (prevents duplicate keys) |
+
+## Integrations
+
+### Zoom Integration 🎥
+Minerva v2 supports connecting a Zoom account for automated meeting creation.
+- **Documentation**: See **System → Documentation** in the app.
+- **Features**: Auth (OAuth 2.0), Status Check, Disconnect.
+- **Security**: Based on Supabase Vault and Server-to-Server OAuth.
 
 ### 3. Enable Auth Hook
 
@@ -87,15 +99,15 @@ In **Dashboard → Authentication → Email Templates**:
 ## Authentication Architecture
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│   Client    │───▶│  Supabase    │───▶│  PostgreSQL │
-│   (Tauri)   │    │  Auth + JWT  │    │  + RLS      │
-└─────────────┘    └──────────────┘    └─────────────┘
-       │                  │
-       │  Custom Claims   │
-       │  (user_role,     │
-       │   hierarchy_level)
-       ▼                  ▼
+┌─────────────┐      ┌──────────────┐    ┌─────────────┐
+│   Client    │ ───▶ │  Supabase    │───▶│  PostgreSQL │
+│   (Tauri)   │      │  Auth + JWT  │    │  + RLS      │
+└─────────────┘      └──────────────┘    └─────────────┘
+       │                    │
+       │  Custom Claims     │
+       │  (user_role,       │
+       │   hierarchy_level) │
+       ▼                    ▼
    Reads from JWT    Auth Hook injects
    without RPC       claims on login
 ```

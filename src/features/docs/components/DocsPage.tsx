@@ -1,5 +1,6 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Separator } from "@/components/ui/separator";
 
 export function DocsPage() {
@@ -57,6 +58,13 @@ export function DocsPage() {
                             Settings
                         </a>
                         <a
+                            href="#zoom-integration"
+                            onClick={(e) => handleScrollTo(e, 'zoom-integration')}
+                            className="text-sm text-muted-foreground hover:underline"
+                        >
+                            Zoom Integration
+                        </a>
+                        <a
                             href="#troubleshooting"
                             onClick={(e) => handleScrollTo(e, 'troubleshooting')}
                             className="text-sm text-muted-foreground hover:underline"
@@ -94,8 +102,8 @@ export function DocsPage() {
                             <div>
                                 <h2 className="text-lg font-semibold tracking-tight mb-2">Introduction</h2>
                                 <p className="text-sm text-muted-foreground leading-relaxed">
-                                    Minerva v2 is a powerful schedule management tool designed to help you organize, resolve conflicts, and export schedule data efficiently.
-                                    Built with modern web technologies, it offers a seamless experience for managing complex scheduling needs.
+                                    Minerva v2 is a schedule management tool designed to help you organize, resolve conflicts, and export schedule data.
+                                    It offers a comprehensive set of features for managing scheduling needs.
                                 </p>
                             </div>
                         </section>
@@ -109,38 +117,53 @@ export function DocsPage() {
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                                     To get started with Minerva, you'll need to create an account or sign in. Here is a quick overview of the main concepts:
                                 </p>
-                                <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+                                <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
                                     <Card className="shadow-none">
                                         <CardHeader>
-                                            <CardTitle className="text-sm font-medium">Schedules</CardTitle>
-                                            <CardDescription className="text-xs text-muted-foreground">
-                                                Individual entries representing a class, meeting, or event. These contain time, location, and assignee information.
-                                            </CardDescription>
+                                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                📅 Schedules
+                                            </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-
+                                            <p className="text-sm text-muted-foreground">
+                                                Manage individual entries like classes or meetings with detailed time and assignee info.
+                                            </p>
                                         </CardContent>
                                     </Card>
                                     <Card className="shadow-none">
                                         <CardHeader>
-                                            <CardTitle className="text-sm font-medium">Conflicts</CardTitle>
-                                            <CardDescription className="text-xs text-muted-foreground">
-                                                When two schedules overlap in time and location or assignee. Minerva automatically detects these for you.
-                                            </CardDescription>
+                                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                ⚠️ Conflicts
+                                            </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-
+                                            <p className="text-sm text-muted-foreground">
+                                                Automatically detect overlaps in time, location, or assignee to prevent double-booking.
+                                            </p>
                                         </CardContent>
                                     </Card>
                                     <Card className="shadow-none">
                                         <CardHeader>
-                                            <CardTitle className="text-sm font-medium">Profile</CardTitle>
-                                            <CardDescription className="text-xs text-muted-foreground">
-                                                Your personal account settings, display name, and security options.
-                                            </CardDescription>
+                                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                👤 Profile
+                                            </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-
+                                            <p className="text-sm text-muted-foreground">
+                                                Manage your personal settings, display name, and security preferences.
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="shadow-none">
+                                        <CardHeader>
+                                            <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                ⚙️ Settings
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-sm text-muted-foreground">
+                                                Customize your application preferences, theme, notification settings, and export paths.
+                                            </p>
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -154,7 +177,6 @@ export function DocsPage() {
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
                                     <h2 className="text-lg font-semibold tracking-tight">Account & Security</h2>
-                                    <Badge variant="outline">New</Badge>
                                 </div>
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                                     Manage your account settings and security from the Profile page.
@@ -193,7 +215,6 @@ export function DocsPage() {
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
                                     <h2 className="text-lg font-semibold tracking-tight">Managing Schedules</h2>
-                                    <Badge variant="secondary">Core Feature</Badge>
                                 </div>
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                                     The Dashboard is where you view and manipulate your schedule data.
@@ -201,13 +222,13 @@ export function DocsPage() {
 
                                 <h3 className="text-sm font-semibold mb-2">Importing Data</h3>
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                                    Click the "Upload Files" button to import Excel files. Supported formats include .xlsx and .xls.
+                                    Use the import function to upload Excel files. Supported formats include .xlsx and .xls.
                                     Ensure your columns match the expected format (Date, Time, Location, etc.).
                                 </p>
 
-                                <h3 className="text-sm font-semibold mb-2">Auto Assign</h3>
+                                <h3 className="text-sm font-semibold mb-2">Auto Assign (Coming Soon)</h3>
                                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                                    Use the "Auto Assign" feature to automatically distribute unassigned schedules to available slots or personnel based on predefined rules.
+                                    This feature is currently in development. It is intended to automatically distribute unassigned schedules to available slots or personnel based on predefined rules.
                                 </p>
                             </div>
                         </section>
@@ -223,11 +244,38 @@ export function DocsPage() {
                                 </p>
                                 <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 ml-2">
                                     <li><strong>Appearance:</strong> Toggle between Light, Dark, or System theme.</li>
-                                    <li><strong>Language:</strong> Choose your preferred language (English, Spanish, French).</li>
-                                    <li><strong>Export Path:</strong> Choose where your schedule exports are saved by default.</li>
-                                    <li><strong>Auto Save:</strong> Enable or disable automatic saving of your work to local storage.</li>
-                                    <li><strong>Clear Cache:</strong> Reset the application state if you encounter issues.</li>
+                                    <li><strong>Notifications:</strong> Enable or disable Weekly Digests and Realtime Alerts.</li>
+                                    <li><strong>Automation:</strong> Configure Auto Save preferences.</li>
+                                    <li><strong>Storage & Export:</strong> Set default export paths, backup locations, and quick export options.</li>
+                                    <li><strong>Preferences:</strong> Choose your preferred language (English, Spanish, French).</li>
+                                    <li><strong>System:</strong> Clear local cache and check for software updates.</li>
                                 </ul>
+                            </div>
+                        </section>
+
+                        <Separator />
+
+                        {/* Zoom Integration */}
+                        <section id="zoom-integration" className="space-y-4">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <h2 className="text-lg font-semibold tracking-tight">Zoom Integration</h2>
+                                </div>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Minerva v2 allows you to check the status of your connection with Zoom.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Connecting Your Account</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Go to <strong>System → Zoom Integration</strong> and click "Connect Zoom".
+                                    A browser window will open asking you to authorize Minerva. Once approved, the system will automatically detect the connection.
+                                </p>
+
+                                <h3 className="text-sm font-semibold mb-2">Permissions & Security</h3>
+                                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                    Minerva uses a secure Server-to-Server connection. Your credentials are encrypted and never exposed to the application's interface.
+                                    Only Administrators can manage this connection.
+                                </p>
                             </div>
                         </section>
 
@@ -245,6 +293,7 @@ export function DocsPage() {
                                     <li>Use "Clear Cache" in Settings to reset local data.</li>
                                     <li>Ensure your input Excel files are not corrupted and follow the correct format.</li>
                                     <li>If you can't log in, try the "Forgot password?" flow to reset your credentials.</li>
+                                    <li>For Zoom connection issues, try disconnecting and reconnecting if the status seems stuck.</li>
                                     <li>Contact support if issues persist after trying these steps.</li>
                                 </ul>
                             </div>

@@ -8,9 +8,10 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
+import { ZoomIntegration } from "@/features/system/components/ZoomIntegration";
 
 export function SystemPage() {
-    const { t } = useTranslation();
+    // const { t } = useTranslation(); // 't' no se usa por ahora en este componente (hardcoded English UI)
     const { isAdmin } = useAuth();
     const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
     const [isManageRolesOpen, setIsManageRolesOpen] = useState(false);
@@ -141,35 +142,7 @@ export function SystemPage() {
 
                     {/* Zoom Integration - Super Admin only */}
                     <RequirePermission level={100}>
-                        <Card className="shadow-none">
-                            <CardHeader>
-                                <CardTitle>{t("profile.zoom.title")}</CardTitle>
-                                <CardDescription>
-                                    {t("profile.zoom.desc")}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between gap-6 flex-wrap">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <div className="size-2 rounded-full bg-gray-300" />
-                                            <span className="font-medium text-sm">
-                                                {t("profile.zoom.not_connected")}
-                                            </span>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground">
-                                            {t("profile.zoom.no_account_linked")}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button variant="outline">
-                                            <Link2 />
-                                            {t("profile.zoom.connect_button")}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <ZoomIntegration />
                     </RequirePermission>
 
                     {/* System Activity */}
