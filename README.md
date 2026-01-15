@@ -49,13 +49,14 @@ Execute each file in Supabase **SQL Editor**, following this order:
 | 8 | `008_realtime_security.sql` | Enable Realtime for specific roles |
 | 9 | `009_zoom_connection.sql` | Zoom Integration Tables & Vault Setup |
 | 10 | `010_fix_zoom_rpc.sql` | Robust credential storage RPC (prevents duplicate keys) |
+| 11 | `011_create_zoom_sync_tables.sql` | Tables for syncing Zoom Users and Meetings with RLS |
 
 ## Integrations
 
 ### Zoom Integration 🎥
 Minerva v2 supports connecting a Zoom account for automated meeting creation.
 - **Documentation**: See **System → Documentation** in the app.
-- **Features**: Auth (OAuth 2.0), Status Check, Disconnect.
+- **Features**: Auth (OAuth 2.0), Status Check, Disconnect, **Sync Data (Users & Meetings)**.
 - **Security**: Based on Supabase Vault and Server-to-Server OAuth.
 
 ### 3. Enable Auth Hook
@@ -134,3 +135,19 @@ The executable will be in `src-tauri/target/release/`.
 - ✅ Privilege escalation prevention trigger
 - ✅ SECURITY DEFINER with secure search_path
 - ✅ Policies using `auth.jwt()` for performance
+
+## Troubleshooting
+
+### "Invalid JWT" Error (401)
+If you encounter this error during synchronization, it is likely due to strict token validation at the Gateway level.
+
+**Solution:**
+Deploy the function with the `--no-verify-jwt` flag to rely on the function's internal security logic:
+   ```bash
+   supabase functions deploy zoom-sync --no-verify-jwt
+   ```
+
+### "Failed to refresh Zoom token" Error (400)
+If you see this error, it means the **Refresh Token** in the database is no longer valid.
+- **Cause**: The same Zoom App credentials were connected to another project/environment (e.g., localhost vs production). Zoom rotates refresh tokens; using it in one place invalidates the old one.
+- **Solution**: Go to **Settings**, click **Disconnect**, and then **Connect Zoom** again. This generates a fresh pair of tokens valid for this environment.

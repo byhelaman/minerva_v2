@@ -351,7 +351,6 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
                             </p>
                             {myLevel >= 80 && (
                                 <Button
-                                    variant="outline"
                                     size="sm"
                                     onClick={() => setIsCreateOpen(true)}
                                 >

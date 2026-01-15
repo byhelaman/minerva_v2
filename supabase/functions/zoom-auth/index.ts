@@ -205,7 +205,7 @@ async function handleCallback(url: URL, corsHeaders: any): Promise<Response> {
         return new Response(`Error de Base de Datos: ${rpcError.message}`, { status: 500 })
     }
 
-    return new Response('Zoom conectado exitosamente! Puedes cerrar esta ventana.', {
+    return new Response('Zoom conectado exitosamente!\nPuedes cerrar esta ventana.', {
         headers: { 'Content-Type': 'text/plain' }
     })
 }

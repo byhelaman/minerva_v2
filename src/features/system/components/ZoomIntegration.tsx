@@ -1,8 +1,9 @@
+
 import { useState, useEffect } from "react";
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Unplug, Link2 } from "lucide-react";
+import { Loader2, Unplug, Link2, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -16,6 +17,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useZoomStore } from "@/features/matching/stores/useZoomStore";
 
 interface ZoomAccount {
     email: string;
@@ -28,6 +30,9 @@ export function ZoomIntegration() {
     const [account, setAccount] = useState<ZoomAccount | null>(null);
     const [isConnecting, setIsConnecting] = useState(false);
     const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+    // Store de Zoom para lógica de sincronización
+    const { triggerSync, isSyncing } = useZoomStore();
 
     const fetchStatus = async () => {
         try {
@@ -59,7 +64,7 @@ export function ZoomIntegration() {
         try {
             setIsConnecting(true);
 
-            // 1. Get Auth URL from Edge Function
+            // 1. Obtener URL de autenticación desde la Edge Function
             const { data, error } = await supabase.functions.invoke('zoom-auth', {
                 body: { action: 'init' },
                 method: 'POST'
@@ -68,13 +73,13 @@ export function ZoomIntegration() {
             if (error) throw error;
             if (!data?.url) throw new Error("No URL returned");
 
-            // 2. Open Browser (Tauri - System Default)
+            // 2. Abrir navegador (Tauri - Predeterminado del sistema)
             // @ts-ignore
             await openUrl(data.url);
 
             toast.info("Please complete authentication in your browser...");
 
-            // 3. Start Polling for success
+            // 3. Iniciar sondeo (polling) para verificar éxito
             const startTime = Date.now();
             const POLL_INTERVAL = 2000; // 2s
             const TIMEOUT = 180000; // 3 min
@@ -94,7 +99,7 @@ export function ZoomIntegration() {
                     });
 
                     if (statusError) {
-                        // Critical error check if needed
+                        // Verificación de error crítico si es necesario
                     }
 
                     if (statusData?.connected) {
@@ -104,7 +109,7 @@ export function ZoomIntegration() {
                         toast.success("Zoom connected successfully!");
                     }
                 } catch (e) {
-                    // Ignore
+                    // Ignorar
                 }
             }, POLL_INTERVAL);
 
@@ -115,12 +120,12 @@ export function ZoomIntegration() {
     };
 
     const handleDisconnect = async (e: React.MouseEvent) => {
-        // Prevent AlertDialog from closing immediately if we want to show loading state inside?
-        // Actually for simplicity, we let it close but disabling the trigger button avoids double clicks?
-        // But the trigger is only disabled IF the dialog is closed.
-        // Let's just track state.
-        e.preventDefault(); // Prevent default close logic to handle async? 
-        // No, standard AlertDialogAction closes immediately. Preventing default keeps it open.
+        // ¿Prevenir el cierre inmediato del AlertDialog si queremos mostrar estado de carga dentro?
+        // En realidad por simplicidad, dejamos que cierre pero deshabilitar el botón disparador evita doble clics.
+        // Pero el disparador solo se deshabilita SI el diálogo está cerrado.
+        // Solo rastreemos el estado.
+        e.preventDefault(); // ¿Prevenir lógica de cierre por defecto para manejar asincronía?
+        // No, AlertDialogAction estándar cierra inmediatamente. Prevenir default lo mantiene abierto.
 
         try {
             setIsDisconnecting(true);
@@ -133,14 +138,24 @@ export function ZoomIntegration() {
 
             setAccount(null);
             toast.success("Zoom disconnected");
-            // If we prevented default, we'd need to manually close the dialog here via controlled state.
-            // But since 'setAccount(null)' removes the dialog entirely from DOM (rendering 'Connect' button instead), 
-            // it doesn't matter if we prevented default or not regarding closing.
-            // The important part is disabling the button while request is in flight.
+            // Si prevenimos el default, necesitaríamos cerrar manualmente el diálogo aquí vía estado controlado.
+            // Pero dado que 'setAccount(null)' elimina el diálogo completamente del DOM (renderizando el botón 'Connect' en su lugar),
+            // no importa si prevenimos el default o no respecto al cierre.
+            // La parte importante es deshabilitar el botón mientras la petición está en vuelo.
         } catch (error: any) {
             toast.error("Failed to disconnect");
         } finally {
             setIsDisconnecting(false);
+        }
+    };
+
+    const handleSync = async () => {
+        try {
+            await triggerSync();
+            toast.success("Zoom data synced successfully");
+        } catch (error: any) {
+            console.error("Sync failed", error);
+            toast.error(error.message || "Failed to sync Zoom data");
         }
     };
 
@@ -188,11 +203,23 @@ export function ZoomIntegration() {
                         )}
 
                         <p className="text-sm text-muted-foreground">
-                            {account ? `Linked to ${account.email}` : "No account linked"}
+                            {account ? `Linked to ${account.email} ` : "No account linked"}
                         </p>
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {account && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleSync}
+                                disabled={isSyncing}
+                            >
+                                {isSyncing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                                {isSyncing ? "Syncing..." : "Sync Data"}
+                            </Button>
+                        )}
+
                         {account ? (
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>

@@ -33,8 +33,7 @@
     }
   },
   "include": [
-    "src",
-    "dialog.tsx"
+    "src"
   ],
   "references": [
     {
