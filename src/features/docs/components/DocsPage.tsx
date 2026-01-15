@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { Separator } from "@/components/ui/separator";
 
@@ -13,7 +13,7 @@ export function DocsPage() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-100px)]">
+        <div className="flex flex-col h-[calc(100vh-140px)]">
             <div className="flex flex-col py-8 my-4 gap-1 flex-none">
                 <h1 className="text-xl font-bold tracking-tight">Documentation</h1>
                 <p className="text-muted-foreground">Learn how to use Minerva v2 effectively.</p>
@@ -246,7 +246,7 @@ export function DocsPage() {
                                     <li><strong>Appearance:</strong> Toggle between Light, Dark, or System theme.</li>
                                     <li><strong>Notifications:</strong> Enable or disable Weekly Digests and Realtime Alerts.</li>
                                     <li><strong>Automation:</strong> Configure Auto Save preferences.</li>
-                                    <li><strong>Storage & Export:</strong> Set default export paths, backup locations, and quick export options.</li>
+                                    <li><strong>Storage & Export:</strong> Configure open after export behavior.</li>
                                     <li><strong>Preferences:</strong> Choose your preferred language (English, Spanish, French).</li>
                                     <li><strong>System:</strong> Clear local cache and check for software updates.</li>
                                 </ul>
@@ -328,8 +328,8 @@ export function DocsPage() {
 
                                 <h3 className="text-sm font-semibold mb-2">Export Options</h3>
                                 <p className="text-sm text-muted-foreground leading-relaxed">
-                                    You can configure your default export path in Settings → Storage & Export.
-                                    Enable "Quick Export" to skip the file dialog and save directly.
+                                    When you export, a secure system dialog will appear allowing you to choose where to save the file.
+                                    You can toggle "Open file after export" in Settings to automatically open the Excel file after saving.
                                 </p>
                             </div>
                         </section>

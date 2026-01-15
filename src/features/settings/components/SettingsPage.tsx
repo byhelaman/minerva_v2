@@ -23,13 +23,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useTheme } from "@/components/theme-provider";
 import { useSettings } from "@/components/settings-provider";
-import { Input } from "@/components/ui/input";
-import { ButtonGroup } from "@/components/ui/button-group";
 import { BaseDirectory, exists, remove } from "@tauri-apps/plugin-fs";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { downloadDir } from "@tauri-apps/api/path";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
 import { AUTOSAVE_FILENAME, SETTINGS_FILENAME } from "@/lib/constants";
 import { useTranslation } from "react-i18next";
 
@@ -37,42 +32,6 @@ export function SettingsPage() {
     const { t, i18n } = useTranslation();
     const { setTheme } = useTheme();
     const { settings, updateSetting } = useSettings();
-    const [displayPath, setDisplayPath] = useState<string>("");
-
-    // Initialize display path with Downloads if empty
-    useEffect(() => {
-        const initPath = async () => {
-            if (settings.defaultExportPath) {
-                setDisplayPath(settings.defaultExportPath);
-            } else {
-                try {
-                    const downloads = await downloadDir();
-                    setDisplayPath(downloads);
-                } catch {
-                    setDisplayPath("Downloads");
-                }
-            }
-        };
-        initPath();
-    }, [settings.defaultExportPath]);
-
-    const handleBrowseExportPath = async () => {
-        try {
-            const selected = await openDialog({
-                directory: true,
-                multiple: false,
-                title: "Select Default Export Folder",
-            });
-            if (selected) {
-                updateSetting("defaultExportPath", selected as string);
-                toast.success("Export path updated");
-            }
-        } catch (error) {
-            console.error("Failed to select folder:", error);
-            toast.error("Failed to select folder");
-        }
-    };
-
     const handleClearCache = async () => {
         try {
             let filesDeleted = 0;
@@ -95,9 +54,7 @@ export function SettingsPage() {
             updateSetting("actionsRespectFilters", false);
             updateSetting("autoSave", true);
             updateSetting("theme", "system");
-            updateSetting("defaultExportPath", "");
             updateSetting("openAfterExport", true);
-            updateSetting("exportWithoutConfirmation", false);
             setTheme("system"); // Apply theme reset
 
             if (filesDeleted > 0) {
@@ -245,7 +202,7 @@ export function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Storage & Export (New Block) */}
+                    {/* Export Preferences */}
                     <Card className="shadow-none">
                         <CardHeader>
                             <CardTitle>{t("settings.storage.title")}</CardTitle>
@@ -254,39 +211,6 @@ export function SettingsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-3">
-                                <Label htmlFor="save-path">{t("settings.storage.default_export_path")}</Label>
-                                <ButtonGroup className="w-full">
-                                    <Input id="save-path"
-                                        value={displayPath}
-                                        readOnly />
-                                    <Button
-                                        variant="secondary"
-                                        aria-label="Browse"
-                                        className="border"
-                                        onClick={handleBrowseExportPath}
-                                    >
-                                        {t("settings.storage.browse")}
-                                    </Button>
-                                </ButtonGroup>
-                                <p className="text-[0.8rem] text-muted-foreground">
-                                    {t("settings.storage.export_path_desc")}
-                                </p>
-                            </div>
-                            <div className="space-y-3">
-                                <Label htmlFor="backup-path">{t("settings.storage.backups_location")}</Label>
-                                <ButtonGroup className="w-full">
-                                    <Input id="backup-path"
-                                        defaultValue="C:\Users\Helaman\Documents\Minerva\Backups"
-                                        readOnly />
-                                    <Button variant="secondary" aria-label="Browse" className="border">
-                                        {t("settings.storage.browse")}
-                                    </Button>
-                                </ButtonGroup>
-                                <p className="text-[0.8rem] text-muted-foreground">
-                                    {t("settings.storage.backups_desc")}
-                                </p>
-                            </div>
                             <div className="flex items-center justify-between space-x-2">
                                 <Label htmlFor="open-after-export" className="flex flex-col items-start">
                                     <span>{t("settings.storage.open_after_export")}</span>
@@ -301,26 +225,6 @@ export function SettingsPage() {
                                     className="h-[20px] w-[36px] [&_span[data-slot=switch-thumb]]:size-4 [&_span[data-slot=switch-thumb]]:data-[state=checked]:translate-x-4"
                                 />
                             </div>
-                            <div className="flex items-center justify-between space-x-2">
-                                <Label htmlFor="silent-export" className="flex flex-col items-start">
-                                    <span>{t("settings.storage.quick_export")}</span>
-                                    <span className="font-normal text-xs text-muted-foreground">
-                                        {t("settings.storage.quick_export_desc")}
-                                    </span>
-                                </Label>
-                                <Switch
-                                    id="silent-export"
-                                    checked={settings.exportWithoutConfirmation}
-                                    onCheckedChange={(checked) => updateSetting("exportWithoutConfirmation", checked)}
-                                    className="h-[20px] w-[36px] [&_span[data-slot=switch-thumb]]:size-4 [&_span[data-slot=switch-thumb]]:data-[state=checked]:translate-x-4"
-                                />
-                            </div>
-
-                            {settings.exportWithoutConfirmation && (
-                                <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                                    <span className="font-semibold">{t("settings.storage.quick_export_note")}</span> {t("settings.storage.quick_export_warning")}
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
                 </div>

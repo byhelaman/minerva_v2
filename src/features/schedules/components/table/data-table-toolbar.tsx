@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
+import { secureSaveFile } from "@/lib/secure-export";
 import { type Table } from "@tanstack/react-table";
 import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2 } from "lucide-react";
 import { utils, write } from "xlsx";
 import { toast } from "sonner";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile, writeFile, BaseDirectory } from "@tauri-apps/plugin-fs";
-import { downloadDir } from "@tauri-apps/api/path";
+// import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile, BaseDirectory } from "@tauri-apps/plugin-fs";
 
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -191,70 +191,22 @@ export function DataTableToolbar<TData>({
             const dateStr = now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
             const defaultName = `schedule-export-${dateStr}.xlsx`;
 
-            // Use default export path from settings if available
-            // Quick Export Logic
-            let filePath: string | null = null;
+            // Crear buffer de Excel
             const excelBuffer = write(wb, { bookType: "xlsx", type: "array" });
 
-            if (settings.exportWithoutConfirmation) {
-                // Determine destination path: use settings or fallback to Downloads
-                let exportDir = settings.defaultExportPath;
-                if (!exportDir) {
-                    try {
-                        exportDir = await downloadDir();
-                    } catch (err) {
-                        console.error("Failed to get download dir:", err);
-                    }
-                }
+            // Exportación Segura (Única vía)
+            const saved = await secureSaveFile({
+                title: "Guardar Como",
+                defaultName: defaultName,
+                content: new Uint8Array(excelBuffer),
+                openAfterExport: settings.openAfterExport
+            });
 
-                if (exportDir) {
-                    console.log("Attempting Quick Export to:", exportDir);
-                    // Try quick export
-                    try {
-                        const fullPath = `${exportDir}\\${defaultName}`;
-                        await writeFile(fullPath, new Uint8Array(excelBuffer));
-                        filePath = fullPath;
-                        console.log("Quick Export successful:", filePath);
-                    } catch (writeError) {
-                        console.warn("Quick export failed, falling back to dialog:", writeError);
-                        toast.warning("Quick export failed (check permissions), falling back to dialog");
-                    }
-                } else {
-                    console.warn("Skipping Quick Export: No valid export directory found.");
-                }
-            } else {
-                console.log("Skipping Quick Export. Enabled:", settings.exportWithoutConfirmation, "Path:", settings.defaultExportPath);
+            if (saved) {
+                toast.success("Schedule exported to Excel successfully");
             }
 
-            // Fallback to dialog if quick export wasn't attempted or failed
-            if (!filePath) {
-                const defaultPath = settings.defaultExportPath
-                    ? `${settings.defaultExportPath}\\${defaultName}`
-                    : defaultName;
 
-                filePath = await save({
-                    filters: [{ name: "Excel", extensions: ["xlsx"] }],
-                    defaultPath: defaultPath,
-                });
-
-                if (!filePath) return;
-
-                // Only write if we used the dialog (quick export writes inside the try block)
-                await writeFile(filePath, new Uint8Array(excelBuffer));
-            }
-
-            toast.success("Schedule exported to Excel successfully");
-
-            // Open file after export if setting enabled
-            if (settings.openAfterExport) {
-                try {
-                    const { openPath } = await import("@tauri-apps/plugin-opener");
-                    await openPath(filePath);
-                } catch (openError) {
-                    console.error("Failed to open file:", openError);
-                    toast.warning("File exported but could not be opened automatically");
-                }
-            }
         } catch (error) {
             console.error(error);
             toast.error("Failed to export Excel");

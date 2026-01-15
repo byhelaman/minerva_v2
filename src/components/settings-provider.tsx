@@ -1,15 +1,13 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { readTextFile, writeTextFile, exists, BaseDirectory } from "@tauri-apps/plugin-fs";
-import { downloadDir } from "@tauri-apps/api/path";
+
 import { SETTINGS_FILENAME } from "@/lib/constants";
 
 interface AppSettings {
     actionsRespectFilters: boolean;
     autoSave: boolean;
     theme: "light" | "dark" | "system";
-    defaultExportPath: string; // Empty string = use Downloads folder
     openAfterExport: boolean;
-    exportWithoutConfirmation: boolean;
 }
 
 interface SettingsContextType {
@@ -22,9 +20,7 @@ const defaultSettings: AppSettings = {
     actionsRespectFilters: false,
     autoSave: true,
     theme: "system",
-    defaultExportPath: "", // Will resolve to Downloads at runtime
     openAfterExport: true,
-    exportWithoutConfirmation: false,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -45,26 +41,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 if (fileExists) {
                     const content = await readTextFile(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
                     const parsed = JSON.parse(content);
-
-                    // If defaultExportPath is missing or empty, resolve it
-                    let finalSettings = { ...defaultSettings, ...parsed };
-                    if (!finalSettings.defaultExportPath) {
-                        try {
-                            finalSettings.defaultExportPath = await downloadDir();
-                        } catch (err) {
-                            console.error("Failed to get download dir:", err);
-                        }
-                    }
-
-                    setSettings(finalSettings);
-                } else {
-                    // First run: resolve download dir for default settings
-                    try {
-                        const dlDir = await downloadDir();
-                        setSettings(prev => ({ ...prev, defaultExportPath: dlDir }));
-                    } catch (err) {
-                        console.error("Failed to get download dir:", err);
-                    }
+                    setSettings({ ...defaultSettings, ...parsed });
                 }
             } catch (e) {
                 console.error("Failed to load settings from file:", e);

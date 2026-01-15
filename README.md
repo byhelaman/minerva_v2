@@ -135,6 +135,8 @@ The executable will be in `src-tauri/target/release/`.
 - ✅ Privilege escalation prevention trigger
 - ✅ SECURITY DEFINER with secure search_path
 - ✅ Policies using `auth.jwt()` for performance
+- ✅ Secure File System Access (Sandboxed + Native Dialogs)
+- ✅ Principle of Least Privilege for Export Operations
 
 ## Troubleshooting
 

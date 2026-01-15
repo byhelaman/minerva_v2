@@ -28,7 +28,7 @@ function ThemeSyncer() {
 
 function Layout() {
   return (
-    <div className="flex flex-col h-screen gap-6 p-5">
+    <div className="flex flex-col min-h-screen gap-6 p-5">
       <ThemeSyncer />
       <div className="flex pr-3">
         <MainNav />
@@ -36,7 +36,7 @@ function Layout() {
           <UserNav />
         </div>
       </div>
-      <div className="w-full max-w-[1400px] mx-auto">
+      <div className="w-full max-w-[1400px] mx-auto pb-8">
         <Outlet />
       </div>
     </div>
