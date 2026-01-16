@@ -114,7 +114,9 @@ export function ScheduleDashboard() {
             const keyToDelete = getUniqueScheduleKey(scheduleToDelete);
             return prev.filter((s) => getUniqueScheduleKey(s) !== keyToDelete);
         });
-        toast.success("Schedule deleted");
+        toast.success("Row Deleted", {
+            description: scheduleToDelete.program,
+        });
     };
 
     const handleClearSchedule = async () => {
@@ -214,6 +216,7 @@ export function ScheduleDashboard() {
             <AssignLinkModal
                 open={isAssignModalOpen}
                 onOpenChange={setIsAssignModalOpen}
+                schedules={schedules}
             />
         </>
     );

@@ -30,10 +30,14 @@
       "@schedules/*": [
         "./src/features/schedules/*"
       ]
-    }
+    },
+    "types": [
+      "vitest/globals"
+    ]
   },
   "include": [
-    "src"
+    "src",
+    "tests"
   ],
   "references": [
     {

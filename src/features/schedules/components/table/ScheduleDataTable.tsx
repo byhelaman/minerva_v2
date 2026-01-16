@@ -33,13 +33,18 @@ interface ScheduleDataTableProps<TData, TValue> {
     data: TData[];
     onUploadClick?: () => void;
     onClearSchedule?: () => void;
+    hideFilters?: boolean;
+    hideUpload?: boolean;
+    hideActions?: boolean;
+    hideOverlaps?: boolean;
 }
 
 export function ScheduleDataTable<TData, TValue>({
     columns,
     data,
     onClearSchedule,
-    onUploadClick
+    onUploadClick,
+    ...props
 }: ScheduleDataTableProps<TData, TValue>) {
     const [rowSelection, setRowSelection] = React.useState({});
     // Columna shift oculta por defecto
@@ -53,8 +58,16 @@ export function ScheduleDataTable<TData, TValue>({
     const [showOverlapsOnly, setShowOverlapsOnly] = React.useState(false);
 
     const overlapResult = React.useMemo(() => {
+        if (props.hideOverlaps) {
+            return {
+                timeConflicts: new Set<string>(),
+                duplicateClasses: new Set<string>(),
+                allOverlaps: new Set<string>(),
+                overlapCount: 0
+            };
+        }
         return detectOverlaps(data as unknown as Schedule[]);
-    }, [data]);
+    }, [data, props.hideOverlaps]);
 
     const tableData = React.useMemo(() => {
         if (!showOverlapsOnly) return data;
@@ -103,6 +116,9 @@ export function ScheduleDataTable<TData, TValue>({
                 onClearSchedule={onClearSchedule}
                 onUploadClick={onUploadClick}
                 fullData={data}
+                hideFilters={props.hideFilters}
+                hideUpload={props.hideUpload}
+                hideActions={props.hideActions}
             />
 
             {/* Table */}

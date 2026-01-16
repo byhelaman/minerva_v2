@@ -157,7 +157,6 @@ export function UploadModal({
             // Flatten arrays
             const allSchedules = results.flat();
 
-            console.log("Parsed Schedules:", allSchedules);
             toast.success(`Successfully parsed ${allSchedules.length} schedules`);
 
             onUploadComplete(allSchedules);

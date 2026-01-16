@@ -10,114 +10,265 @@ export interface ZoomMeetingCandidate {
     join_url?: string;
 }
 
+export interface ZoomUserCandidate {
+    id: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    display_name: string;
+}
+
 export interface MatchResult {
     schedule: Schedule;
-    status: 'matched' | 'ambiguous' | 'not_found';
+    status: 'assigned' | 'to_update' | 'not_found';
+    reason: string;
+    meeting_id?: string;
+    found_instructor?: {
+        id: string;
+        email: string;
+        display_name: string;
+    };
     bestMatch?: ZoomMeetingCandidate;
     candidates: ZoomMeetingCandidate[];
-    score?: number; // 0 es coincidencia perfecta, 1 es sin coincidencia (estándar Fuse.js)
+    score?: number;
 }
 
 /**
- * Servicio para emparejar Horarios (Schedules) con Reuniones de Zoom usando Fuse.js
- * Estrategia: "Solo Nombre" (Nombre del Programa vs Tema de la Reunión)
+ * Servicio para emparejar Horarios con Reuniones de Zoom y Validar Anfitriones.
+ * Lógica portada de Python (assignment_api.py / matching.py)
  */
 export class MatchingService {
-    private fuse: Fuse<ZoomMeetingCandidate>;
+    private fuseMeetings: Fuse<ZoomMeetingCandidate>;
+    private fuseUsers: Fuse<ZoomUserCandidate>;
+    private meetingsDict: Record<string, ZoomMeetingCandidate> = {};
+    private usersDict: Record<string, ZoomUserCandidate> = {};
+    private usersDictDisplay: Record<string, ZoomUserCandidate> = {};
+    private users: ZoomUserCandidate[] = [];
 
-    constructor(meetings: ZoomMeetingCandidate[]) {
-        // Configurar Fuse.js
-        const options: IFuseOptions<ZoomMeetingCandidate> = {
+    constructor(meetings: ZoomMeetingCandidate[], users: ZoomUserCandidate[] = []) {
+        this.users = users;
+        // 1. Preparar Diccionarios para Búsqueda Exacta (Normalizada)
+        meetings.forEach(m => {
+            const key = normalizeString(m.topic);
+            if (key) this.meetingsDict[key] = m;
+        });
+
+        users.forEach(u => {
+            // Clave Primaria: Nombre Completo
+            const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+            if (fullName) {
+                this.usersDict[normalizeString(fullName)] = u;
+            }
+            // Clave Secundaria: Display Name
+            if (u.display_name) {
+                this.usersDictDisplay[normalizeString(u.display_name)] = u;
+            }
+        });
+
+        // 2. Configurar Fuse.js para Búsquedas Difusas (Meetings)
+        const meetingsOptions: IFuseOptions<ZoomMeetingCandidate> = {
             includeScore: true,
-            // Buscar principalmente en 'topic'
             keys: ['topic'],
-            // Umbral: 0.0 = perfecto, 1.0 = nada.
-            // 0.3 permite algo de flexibilidad pero requiere alta relevancia.
-            threshold: 0.3,
-            ignoreLocation: true, // Buscar en cualquier parte de la cadena
+            threshold: 0.3, // Umbral estricto
+            ignoreLocation: true,
             useExtendedSearch: true,
-
-            // Fuse no soporta normalización personalizada simple en el índice sin pre-proceso.
-            // Así que pre-procesaremos tanto los datos del índice como las consultas.
         };
-
-        // MEJOR ENFOQUE: Crear una lista buscable con temas normalizados
+        // Pre-procesar para Fuse
         const normalizedMeetings = meetings.map(m => ({
             ...m,
             normalized_topic: normalizeString(m.topic)
         }));
-
-        this.fuse = new Fuse(normalizedMeetings, {
-            ...options,
-            keys: ['normalized_topic'] // Buscar contra la versión normalizada
+        this.fuseMeetings = new Fuse(normalizedMeetings, {
+            ...meetingsOptions,
+            keys: ['normalized_topic']
         });
+
+        // 3. Configurar Fuse.js para Búsquedas Difusas (Users)
+        const usersOptions: IFuseOptions<ZoomUserCandidate> = {
+            includeScore: true,
+            threshold: 0.45, // Relaxed from 0.35 to handle "Julio Jesus Carpio Zegarra" vs "Julio Carpio"
+            ignoreLocation: true,
+            ignoreFieldNorm: true, // Help with length differences
+            keys: ['normalized_name', 'normalized_display']
+        };
+        const normalizedUsers = users.map(u => ({
+            ...u,
+            normalized_name: normalizeString(`${u.first_name} ${u.last_name}`),
+            normalized_display: normalizeString(u.display_name)
+        }));
+        this.fuseUsers = new Fuse(normalizedUsers, usersOptions);
     }
 
     /**
      * Encontrar mejores coincidencias para un solo horario
      */
     public findMatch(schedule: Schedule): MatchResult {
-        // 1. Normalizar la consulta (Programa del Horario)
-        const query = normalizeString(schedule.program);
+        const result: MatchResult = {
+            schedule,
+            status: 'not_found',
+            reason: '',
+            candidates: []
+        };
 
-        if (!query) {
-            return {
-                schedule,
-                status: 'not_found',
-                candidates: []
-            };
+        const programNormalized = normalizeString(schedule.program);
+        const instructorNormalized = normalizeString(schedule.instructor);
+
+        console.groupCollapsed(`🔍 Match: ${schedule.program} (${schedule.instructor})`);
+        console.log("Raw:", { program: schedule.program, instructor: schedule.instructor });
+        console.log("Normalized:", { program: programNormalized, instructor: instructorNormalized });
+
+        // ---------------------------------------------------------------------
+        // PASO 1: Encontrar la Reunión (Exacto o Difuso)
+        // ---------------------------------------------------------------------
+        let meeting: ZoomMeetingCandidate | undefined;
+        let meetingScore = 1;
+
+        // 1.a. Búsqueda Exacta
+        if (this.meetingsDict[programNormalized]) {
+            meeting = this.meetingsDict[programNormalized];
+            meetingScore = 0;
+            console.log("✅ Meeting Exact Match:", meeting.topic);
         }
+        // 1.b. Búsqueda Difusa
+        else {
+            const searchResults = this.fuseMeetings.search(programNormalized);
+            console.log("🤔 Meeting Fuzzy Candidates:", searchResults.map(r => ({ topic: r.item.topic, score: r.score })));
 
-        // 2. Ejecutar Búsqueda
-        const searchResults = this.fuse.search(query);
-
-        // 3. Analizar Resultados
-        if (searchResults.length === 0) {
-            return {
-                schedule,
-                status: 'not_found',
-                candidates: []
-            };
-        }
-
-        const bestResult = searchResults[0];
-        const score = bestResult.score ?? 1;
-
-        // Umbrales
-        const MATCH_THRESHOLD = 0.15; // Muy buena coincidencia (0 es perfecto)
-        const AMBIGUOUS_THRESHOLD = 0.35; // Aceptable pero quizás ambiguo
-
-        // Chequear ambigüedad: 
-        // Si el segundo resultado está muy cerca del primero (diferencia de score < 0.05), es ambiguo
-        let isAmbiguous = false;
-        if (searchResults.length > 1) {
-            const secondScore = searchResults[1].score ?? 1;
-            if (Math.abs(secondScore - score) < 0.05) {
-                isAmbiguous = true;
+            if (searchResults.length > 0) {
+                const best = searchResults[0];
+                if (best.score !== undefined && best.score <= 0.3) {
+                    meeting = best.item;
+                    meetingScore = best.score;
+                    console.log("✅ Meeting Fuzzy Match Selected:", meeting.topic, "Score:", meetingScore);
+                } else {
+                    console.log("❌ Meeting Fuzzy Matches found but Score too low (> 0.3)");
+                }
+            } else {
+                console.log("❌ No Meeting Fuzzy Candidates found");
             }
         }
 
-        let status: 'matched' | 'ambiguous' | 'not_found' = 'not_found';
-
-        if (score <= MATCH_THRESHOLD && !isAmbiguous) {
-            status = 'matched';
-        } else if (score <= AMBIGUOUS_THRESHOLD || (score <= MATCH_THRESHOLD && isAmbiguous)) {
-            status = 'ambiguous';
+        if (!meeting) {
+            result.status = 'not_found';
+            result.reason = 'Meeting not found';
+            console.log("🏁 Result: NOT FOUND (Meeting)");
+            console.groupEnd();
+            return result;
         }
 
-        // Mapear de vuelta a ZoomMeetingCandidate original (removiendo normalized_topic)
-        const candidates = searchResults.slice(0, 5).map(r => {
-            const { normalized_topic, ...original } = r.item as any;
-            return original as ZoomMeetingCandidate;
-        });
+        result.meeting_id = meeting.meeting_id;
+        result.bestMatch = meeting;
+        result.score = meetingScore;
 
-        return {
-            schedule,
-            status,
-            bestMatch: candidates[0],
-            candidates,
-            score
+        // ---------------------------------------------------------------------
+        // PASO 2: Encontrar al Instructor (Exacto o Difuso)
+        // ---------------------------------------------------------------------
+        let instructor: ZoomUserCandidate | undefined;
+
+        // 2.a. Búsqueda Exacta (Nombre Completo o Display Name)
+        if (this.usersDict[instructorNormalized]) {
+            instructor = this.usersDict[instructorNormalized];
+            console.log("✅ Instructor Exact Match (Name):", instructor.display_name);
+        } else if (this.usersDictDisplay[instructorNormalized]) {
+            instructor = this.usersDictDisplay[instructorNormalized];
+            console.log("✅ Instructor Exact Match (Display):", instructor.display_name);
+        } else {
+            // 2.a.1 Token Set Match (Robust Fallback for "First Last" inside "First Middle Last MatLast")
+            // Mimics Python's token_set_ratio logic which handles subsets well.
+            const queryTokens = new Set(instructorNormalized.split(" "));
+
+            // Find ALL candidates that are subsets
+            const tokenMatches = this.users.filter(u => {
+                const uNameTokens = normalizeString(`${u.first_name} ${u.last_name}`).split(" ");
+                const uDisplayTokens = normalizeString(u.display_name).split(" ");
+
+                // Check if user is subset of query (Query has MORE info)
+                const nameIsSubset = uNameTokens.every(t => queryTokens.has(t));
+                const displayIsSubset = uDisplayTokens.every(t => queryTokens.has(t));
+
+                return nameIsSubset || displayIsSubset;
+            });
+
+            // Select the BEST match (the one with the most tokens) to avoid ambiguity
+            // e.g. "Juan Carlos Perez" vs "Juan Perez". "Juan Perez" (2 tokens) is better than "Juan" (1 token)
+            // if both match.
+            let bestTokenMatch: ZoomUserCandidate | undefined;
+            if (tokenMatches.length > 0) {
+                bestTokenMatch = tokenMatches.reduce((prev, current) => {
+                    const prevLen = Math.max(
+                        normalizeString(`${prev.first_name} ${prev.last_name}`).split(" ").length,
+                        normalizeString(prev.display_name).split(" ").length
+                    );
+                    const currLen = Math.max(
+                        normalizeString(`${current.first_name} ${current.last_name}`).split(" ").length,
+                        normalizeString(current.display_name).split(" ").length
+                    );
+                    return (currLen > prevLen) ? current : prev;
+                });
+            }
+
+            if (bestTokenMatch) {
+                instructor = bestTokenMatch;
+                console.log("✅ Instructor Token Subset Match (Best):", instructor.display_name);
+            }
+            // 2.b. Búsqueda Difusa
+            else {
+                const userResults = this.fuseUsers.search(instructorNormalized);
+                console.log("🤔 Instructor Fuzzy Candidates:", userResults.map(r => ({
+                    name: `${r.item.first_name} ${r.item.last_name}`,
+                    display: r.item.display_name,
+                    score: r.score
+                })));
+
+                if (userResults.length > 0) {
+                    const bestUser = userResults[0];
+                    if (bestUser.score !== undefined && bestUser.score <= 0.45) {
+                        instructor = bestUser.item;
+                        console.log("✅ Instructor Fuzzy Match Selected:", instructor.display_name, "Score:", bestUser.score);
+                    } else {
+                        console.log("❌ Instructor Fuzzy Matches found but Score too low (> 0.45)");
+                    }
+                } else {
+                    console.log("❌ No Instructor Fuzzy Candidates found");
+                }
+            }
+        }
+
+        if (!instructor) {
+            // Encontramos reunión pero NO instructor -> Problema de datos, pero la reunión "existe"
+            result.status = 'not_found';
+            result.reason = 'Instructor not found';
+            console.log("🏁 Result: NOT FOUND (Instructor)");
+            console.groupEnd();
+            return result;
+        }
+
+        result.found_instructor = {
+            id: instructor.id,
+            email: instructor.email,
+            display_name: instructor.display_name
         };
+
+        // ---------------------------------------------------------------------
+        // PASO 3: Validar Anfitrión (Match)
+        // Compare meeting.host_id vs instructor.id
+        // ---------------------------------------------------------------------
+        console.log("⚖️ Validating Host:");
+        console.log("   Meeting Host ID:", meeting.host_id);
+        console.log("   Instructor ID:  ", instructor.id);
+
+        if (meeting.host_id === instructor.id) {
+            result.status = 'assigned';
+            result.reason = '-'; // Todo OK
+            console.log("🏁 Result: ASSIGNED");
+        } else {
+            result.status = 'to_update';
+            result.reason = '-';
+            console.log("🏁 Result: TO UPDATE");
+        }
+
+        console.groupEnd();
+        return result;
     }
 
     /**
@@ -127,3 +278,4 @@ export class MatchingService {
         return schedules.map(s => this.findMatch(s));
     }
 }
+

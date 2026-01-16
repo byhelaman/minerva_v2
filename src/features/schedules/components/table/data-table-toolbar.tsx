@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { secureSaveFile } from "@/lib/secure-export";
 import { type Table } from "@tanstack/react-table";
-import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2 } from "lucide-react";
+import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, CheckCircle2, XCircle, RefreshCw, AlertCircle, BadgeCheckIcon } from "lucide-react";
 import { utils, write } from "xlsx";
 import { toast } from "sonner";
-// import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, BaseDirectory } from "@tauri-apps/plugin-fs";
 
 import { Button } from "@/components/ui/button";
@@ -47,6 +46,13 @@ const branchOptions = [
     { label: "KIDS", value: "KIDS" },
 ];
 
+const statusOptions = [
+    { label: "Assigned", value: "assigned", icon: BadgeCheckIcon },
+    { label: "To Update", value: "to_update", icon: RefreshCw },
+    { label: "Not Found", value: "not_found", icon: XCircle },
+    { label: "Error", value: "error", icon: AlertCircle },
+];
+
 // Opciones por defecto cuando no hay datos cargados
 const defaultTimeOptions = [
     { label: "07:00", value: "07" },
@@ -69,13 +75,15 @@ const defaultTimeOptions = [
 
 interface DataTableToolbarProps<TData> {
     table: Table<TData>;
-
     showOverlapsOnly: boolean;
     setShowOverlapsOnly: (show: boolean) => void;
     overlapCount: number;
     onClearSchedule?: () => void;
     onUploadClick?: () => void;
     fullData: TData[];
+    hideFilters?: boolean;
+    hideUpload?: boolean;
+    hideActions?: boolean;
 }
 
 export function DataTableToolbar<TData>({
@@ -86,6 +94,9 @@ export function DataTableToolbar<TData>({
     onClearSchedule,
     onUploadClick,
     fullData,
+    hideFilters = false,
+    hideUpload = false,
+    hideActions = false,
 }: DataTableToolbarProps<TData>) {
     const isFiltered =
         table.getState().columnFilters.length > 0 ||
@@ -175,9 +186,21 @@ export function DataTableToolbar<TData>({
     const onExportExcel = async () => {
         try {
             const data = getActionData();
+
+            // Helper to prevent CSV Injection
+            const sanitize = (val: unknown): unknown => {
+                if (typeof val === 'string' && /^[=+\-@]/.test(val)) {
+                    return `'${val}`;
+                }
+                return val;
+            };
+
             const dataToExport = data.map((item) => {
                 return {
                     ...item,
+                    instructor: sanitize(item.instructor) as string,
+                    program: sanitize(item.program) as string,
+                    branch: sanitize(item.branch) as string,
                     start_time: formatTimeTo12Hour(item.start_time),
                     end_time: formatTimeTo12Hour(item.end_time),
                 };
@@ -235,14 +258,16 @@ export function DataTableToolbar<TData>({
             <div className="flex items-center justify-between gap-2 w-full">
                 <div className="flex flex-1 items-center gap-2">
                     {/* Upload Files - requires schedules.write permission */}
-                    <RequirePermission permission="schedules.write">
-                        <Button
-                            size="sm"
-                            onClick={onUploadClick}
-                        >
-                            Upload Files
-                        </Button>
-                    </RequirePermission>
+                    {!hideUpload && (
+                        <RequirePermission permission="schedules.write">
+                            <Button
+                                size="sm"
+                                onClick={onUploadClick}
+                            >
+                                Upload Files
+                            </Button>
+                        </RequirePermission>
+                    )}
                     <InputGroup className="w-[320px]">
                         <InputGroupAddon>
                             <Search className="size-4 text-muted-foreground" />
@@ -256,30 +281,47 @@ export function DataTableToolbar<TData>({
                             {table.getFilteredRowModel().rows.length} results
                         </InputGroupAddon>
                     </InputGroup>
-                    {table.getColumn("shift") && (
-                        <DataTableFacetedFilter
-                            column={table.getColumn("shift")}
-                            title="Shift"
-                            options={shiftOptions}
-                            disabled={isTableEmpty}
-                        />
-                    )}
-                    {table.getColumn("branch") && (
-                        <DataTableFacetedFilter
-                            column={table.getColumn("branch")}
-                            title="Branch"
-                            options={branchOptions}
-                            usePartialMatch={true}
-                            disabled={isTableEmpty}
-                        />
-                    )}
-                    {table.getColumn("start_time") && (
-                        <DataTableFacetedFilter
-                            column={table.getColumn("start_time")}
-                            title="Time"
-                            options={timeOptions}
-                            disabled={isTableEmpty}
-                        />
+
+                    {/* Safe check for Status column to avoid console errors if it doesn't exist */}
+                    {(() => {
+                        const statusColumn = table.getAllColumns().find(c => c.id === "status");
+                        return statusColumn && statusColumn.getCanFilter() ? (
+                            <DataTableFacetedFilter
+                                column={statusColumn}
+                                title="Status"
+                                options={statusOptions}
+                            />
+                        ) : null;
+                    })()}
+
+                    {!hideFilters && (
+                        <>
+                            {table.getColumn("shift") && (
+                                <DataTableFacetedFilter
+                                    column={table.getColumn("shift")}
+                                    title="Shift"
+                                    options={shiftOptions}
+                                    disabled={isTableEmpty}
+                                />
+                            )}
+                            {table.getColumn("branch") && (
+                                <DataTableFacetedFilter
+                                    column={table.getColumn("branch")}
+                                    title="Branch"
+                                    options={branchOptions}
+                                    usePartialMatch={true}
+                                    disabled={isTableEmpty}
+                                />
+                            )}
+                            {table.getColumn("start_time") && (
+                                <DataTableFacetedFilter
+                                    column={table.getColumn("start_time")}
+                                    title="Time"
+                                    options={timeOptions}
+                                    disabled={isTableEmpty}
+                                />
+                            )}
+                        </>
                     )}
                     {isFiltered && (
                         <Button
@@ -312,47 +354,49 @@ export function DataTableToolbar<TData>({
                         </Button>
                     )}
                     <DataTableViewOptions table={table} />
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" disabled={!hasSchedules}>
-                                Actions
-                                <ChevronDown />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={handleCopyInstructors}>
-                                <User />
-                                Copy Instructors
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleCopySchedule}>
-                                <CalendarCheck />
-                                Copy Schedule
-                            </DropdownMenuItem>
+                    {!hideActions && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline" disabled={!hasSchedules}>
+                                    Actions
+                                    <ChevronDown />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                                <DropdownMenuItem onClick={handleCopyInstructors}>
+                                    <User />
+                                    Copy Instructors
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleCopySchedule}>
+                                    <CalendarCheck />
+                                    Copy Schedule
+                                </DropdownMenuItem>
 
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={onSaveSchedule}>
-                                <Save />
-                                Save Schedule
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={onExportExcel}>
-                                <Download />
-                                Export to Excel
-                            </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={onSaveSchedule}>
+                                    <Save />
+                                    Save Schedule
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={onExportExcel}>
+                                    <Download />
+                                    Export to Excel
+                                </DropdownMenuItem>
 
-                            {onClearSchedule && (
-                                <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        variant="destructive"
-                                        onClick={() => setShowClearDialog(true)}
-                                    >
-                                        <Trash2 />
-                                        Clear Schedule
-                                    </DropdownMenuItem>
-                                </>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                                {onClearSchedule && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            variant="destructive"
+                                            onClick={() => setShowClearDialog(true)}
+                                        >
+                                            <Trash2 />
+                                            Clear Schedule
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
 
                     {/* Clear Schedule Confirmation Dialog */}
                     <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
