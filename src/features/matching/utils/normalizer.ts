@@ -1,80 +1,37 @@
 /**
  * Utilidad para normalizar cadenas para búsqueda difusa (fuzzy matching).
  * Portado de V1 'referencia/src/services/matching.py'
+ * 
+ * Las palabras irrelevantes ahora se cargan desde un archivo JSON externo
+ * para facilitar el mantenimiento.
  */
 
-// Lista de palabras irrelevantes para eliminar de las cadenas antes de comparar
-// Port exacto del regex de Python
-const IRRELEVANT_WORDS_PATTERN = new RegExp(
-    "\\b(" +
-    [
-        // Modalidades
-        "online",
-        "presencial",
-        "virtual",
-        "hibrido",
-        "remoto",
-        // Idiomas
-        "english",
-        "ingles",
-        "espanol",
-        "aleman",
-        "coreano",
-        "chino",
-        "ruso",
-        "japones",
-        "frances",
-        "italiano",
-        "mandarin",
-        // Niveles y cursos
-        "nivelacion",
-        "beginner",
-        "electiv[oa]s?",
-        "leccion[es]?",
-        "repit[eo]?",
-        "repaso",
-        "crash",
-        "complete",
-        "revision",
-        "evaluacion[es]?",
-        // Organización / estructura
-        // "grupo", // Comentado en el código fuente original V1
-        "bvp",
-        "bvd",
-        "bvs",
-        "pia",
-        "mod",
-        "esp",
-        // "l\d+", // Comentado en el código fuente original V1
-        "otg",
-        "kids",
-        "look\\s?\\d+", // Ajustado para escape de strings en JS
-        "tz\\d+",       // Ajustado para escape de strings en JS
-        "impact",
-        "keynote",
-        "advanced",
-        "time",
-        "zone",
-        // Ubicación / país
-        "per",
-        "ven",
-        "arg",
-        "uru",
-        // Otros
-        "true",
-        "business",
-        "social",
-        "travel",
-        "gerencia",
-        "beca",
-        "camacho",
-    ].join("|") +
-    ")\\b",
-    "gi" // Global + Case Insensitive
-);
+import irrelevantWordsConfig from '../config/irrelevant-words.json';
 
 /**
- * Elimina palabras irrelevantes del texto basado en la lista regex
+ * Construye el patrón regex desde la configuración JSON
+ */
+function buildIrrelevantWordsPattern(): RegExp {
+    const allWords: string[] = [];
+
+    // Agregar todas las palabras de categorías (palabras simples)
+    for (const category of Object.values(irrelevantWordsConfig.categories)) {
+        allWords.push(...category);
+    }
+
+    // Agregar patrones regex especiales
+    allWords.push(...irrelevantWordsConfig.patterns.items);
+
+    // Construir el patrón regex con word boundaries
+    const pattern = "\\b(" + allWords.join("|") + ")\\b";
+    return new RegExp(pattern, "gi");
+}
+
+// Construir el patrón una sola vez al cargar el módulo
+const IRRELEVANT_WORDS_PATTERN = buildIrrelevantWordsPattern();
+
+/**
+ * Elimina palabras irrelevantes del texto basado en la lista configurada
  */
 export function removeIrrelevant(text: string): string {
     if (!text) return "";
@@ -83,28 +40,32 @@ export function removeIrrelevant(text: string): string {
 
 /**
  * Lógica central de normalización.
- * 1. Eliminar palabras irrelevantes
- * 2. Normalizar Unicode (NFD)
- * 3. Eliminar signos diacríticos (acentos)
- * 4. Convertir a minúsculas y limpiar
+ * 1. Pre-limpiar caracteres especiales (underscores a espacios)
+ * 2. Eliminar palabras irrelevantes
+ * 3. Normalizar Unicode (NFD)
+ * 4. Eliminar signos diacríticos (acentos)
+ * 5. Convertir a minúsculas y limpiar
  */
 export function normalizeString(s: string): string {
     if (!s) return "";
 
-    // 1. Eliminar Palabras Irrelevantes
-    let processed = removeIrrelevant(s);
+    // 1. Pre-limpiar: Convertir underscores y guiones a espacios ANTES de eliminar palabras
+    // Esto permite que "F2F_PER" se convierta en "F2F PER" y ambas palabras se eliminen
+    let processed = s.replace(/[-_–—]/g, " ");
 
-    // 2. Normalizar Unicode (NFD - descompone caracteres)
+    // 2. Eliminar Palabras Irrelevantes
+    processed = removeIrrelevant(processed);
+
+    // 3. Normalizar Unicode (NFD - descompone caracteres)
     processed = processed.normalize("NFD");
 
-    // 3. Eliminar caracteres combinados (acentos/diacríticos)
+    // 4. Eliminar caracteres combinados (acentos/diacríticos)
     processed = processed.replace(/[\u0300-\u036f]/g, "");
 
-    // 4. Limpieza estándar (minúsculas, caracteres especiales a espacios)
+    // 5. Limpieza estándar (minúsculas, caracteres especiales a espacios)
     processed = processed
         .toLowerCase()
-        .replace(/[’‘ʻ‚]/g, "'") // Normalizar comillas
-        .replace(/[-_–—]/g, " ") // Normalizar guiones
+        .replace(/[''ʻ‚]/g, "'") // Normalizar comillas
         .replace(/[^\w\s']/g, " ") // Eliminar caracteres especiales (mantener espacios y comillas)
         .replace(/\s+/g, " ") // Colapsar espacios múltiples
         .trim();

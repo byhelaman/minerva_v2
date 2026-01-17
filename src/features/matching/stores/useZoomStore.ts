@@ -182,7 +182,10 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
                 return {
                     ...r,
                     status: 'assigned' as const,
+                    matchedCandidate: selectedMeeting,
                     bestMatch: selectedMeeting,
+                    meeting_id: selectedMeeting.meeting_id,
+                    reason: 'Manually Assigned',
                     // Opcionalmente limpiar candidatos para bloquear la selección
                 };
             }

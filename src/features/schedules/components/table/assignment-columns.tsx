@@ -3,10 +3,13 @@ import { Badge } from "@/components/ui/badge";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { Schedule } from "@schedules/utils/excel-parser";
 import { Checkbox } from "@/components/ui/checkbox";
-import { XCircle, RefreshCw, AlertCircle, BadgeCheckIcon, MoreHorizontal, Check, ChevronsUpDown } from "lucide-react";
+import { XCircle, RefreshCw, AlertCircle, BadgeCheckIcon, MoreHorizontal, Check, ChevronsUpDown, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ZoomMeetingCandidate } from "@/features/matching/services/matcher";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+
 // Definir la estructura de los datos de asignación
 // Esto extiende Schedule pero se centra en el aspecto de la asignación
 export interface AssignmentRow extends Schedule {
@@ -15,9 +18,11 @@ export interface AssignmentRow extends Schedule {
     time: string; // Hora combinada/formateada
     // instructor: string; // Ya en Schedule
     // program: string; // Ya en Schedule
-    status: 'assigned' | 'to_update' | 'not_found' | 'error';
+    status: 'assigned' | 'to_update' | 'not_found' | 'ambiguous';
     reason: string; // Explicación del estado
     originalSchedule: Schedule; // Mantener referencia a los datos originales
+    matchedCandidate?: ZoomMeetingCandidate; // Assigned meeting details
+    ambiguousCandidates?: ZoomMeetingCandidate[]; // List of ambiguous options
 }
 
 // Modificado para aceptar lista dinámica de instructores
@@ -141,39 +146,111 @@ export const getAssignmentColumns = (instructorsList: string[] = []): ColumnDef<
         ),
         cell: ({ row }) => {
             const status = row.getValue("status") as string;
+            const matched = row.original.matchedCandidate;
+            const ambiguous = row.original.ambiguousCandidates;
 
+            let badge;
             if (status === 'assigned') {
-                return (
-                    <Badge variant="outline" className="border-green-600 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-500 dark:text-green-400">
+                badge = (
+                    <Badge variant="outline" className="border-green-600 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-500 dark:text-green-400 cursor-pointer hover:bg-green-100">
                         <BadgeCheckIcon />
                         Assigned
                     </Badge>
                 );
-            }
-
-            if (status === 'not_found') {
-                return (
+            } else if (status === 'not_found') {
+                badge = (
                     <Badge variant="outline" className="border-destructive/50 text-destructive bg-destructive/5 dark:border-destructive/50">
                         <XCircle />
                         Not Found
                     </Badge>
                 );
-            }
-
-            if (status === 'to_update') {
-                return (
-                    <Badge variant="outline" className="text-muted-foreground">
+            } else if (status === 'to_update') {
+                badge = (
+                    <Badge variant="outline" className="text-muted-foreground cursor-pointer hover:bg-gray-100">
                         <RefreshCw />
                         To Update
+                    </Badge>
+                );
+            } else if (status === 'ambiguous') {
+                badge = (
+                    <Badge variant="outline" className="border-orange-500/50 text-orange-600 bg-orange-500/10 dark:text-orange-400 cursor-pointer hover:bg-orange-500/20">
+                        <HelpCircle />
+                        Ambiguo
+                    </Badge>
+                );
+            } else {
+                badge = (
+                    <Badge variant="outline">
+                        <AlertCircle />
+                        {status}
                     </Badge>
                 );
             }
 
             return (
-                <Badge variant="outline">
-                    <AlertCircle />
-                    {status}
-                </Badge>
+                <HoverCard>
+                    <HoverCardTrigger asChild>
+                        {badge}
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-96 p-4">
+                        <div className="space-y-3">
+                            {status === 'not_found' ? (
+                                <>
+                                    <div className="font-semibold border-b pb-2 mb-2 text-destructive">No Encontrado</div>
+                                    <div className="text-sm">
+                                        <div className="grid grid-cols-3 gap-1">
+                                            <span className="text-muted-foreground font-medium">Razón:</span>
+                                            <span className="col-span-2 text-destructive">{row.original.reason || "Sin coincidencia"}</span>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : status === 'ambiguous' && ambiguous && ambiguous.length > 0 ? (
+                                <>
+                                    <div className="font-semibold border-b pb-2 mb-2 flex justify-between items-center">
+                                        <span>Candidatos Ambiguos ({ambiguous.length})</span>
+                                        <Badge variant="secondary" className="text-xs">Select One</Badge>
+                                    </div>
+                                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                        {ambiguous.map((cand, i) => (
+                                            <div key={i} className="text-sm border p-3 rounded-md hover:bg-accent cursor-pointer transition-colors group">
+                                                <div className="font-medium group-hover:text-primary">{cand.topic}</div>
+                                                <div className="text-xs text-muted-foreground mt-1 flex gap-2">
+                                                    <span>ID: {cand.meeting_id}</span>
+                                                    <span>•</span>
+                                                    <span>Host: {cand.host_id}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : matched ? (
+                                <>
+                                    <div className="font-semibold border-b pb-2 mb-2">Reunión Asignada</div>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="grid grid-cols-3 gap-1">
+                                            <span className="text-muted-foreground font-medium">Topic:</span>
+                                            <span className="col-span-2">{matched.topic}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1">
+                                            <span className="text-muted-foreground font-medium">ID:</span>
+                                            <span className="col-span-2 font-mono">{matched.meeting_id}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1">
+                                            <span className="text-muted-foreground font-medium">Time:</span>
+                                            <span className="col-span-2">{matched.start_time}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1">
+                                            <span className="text-muted-foreground font-medium">Host ID:</span>
+                                            <span className="col-span-2 text-xs truncate" title={matched.host_id}>{matched.host_id}</span>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-sm text-muted-foreground">No details available</div>
+                            )}
+                        </div>
+                    </HoverCardContent>
+                </HoverCard>
             );
         },
         // enableColumnFilter: false,

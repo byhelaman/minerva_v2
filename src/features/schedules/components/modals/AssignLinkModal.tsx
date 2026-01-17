@@ -45,7 +45,9 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
             // program: r.schedule.program, // Ya en spread
             status: r.status,
             reason: r.reason || (r.status === 'not_found' ? 'Sin coincidencia' : ''),
-            originalSchedule: r.schedule
+            originalSchedule: r.schedule,
+            matchedCandidate: r.matchedCandidate,
+            ambiguousCandidates: r.ambiguousCandidates
         }));
     }, [matchResults]);
 
