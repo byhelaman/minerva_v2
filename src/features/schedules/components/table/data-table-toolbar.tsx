@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { secureSaveFile } from "@/lib/secure-export";
 import { type Table } from "@tanstack/react-table";
-import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, XCircle, RefreshCw, AlertCircle, BadgeCheckIcon } from "lucide-react";
+import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, XCircle, RefreshCw, BadgeCheckIcon, HelpCircle, Hand, Clock1, Clock2, Clock3, Clock4, Clock5, Clock6, Clock7, Clock8, Clock9, Clock10, Clock11, Clock12 } from "lucide-react";
 import { utils, write } from "xlsx";
 import { toast } from "sonner";
 import { writeTextFile, BaseDirectory } from "@tauri-apps/plugin-fs";
@@ -50,27 +50,35 @@ const statusOptions = [
     { label: "Assigned", value: "assigned", icon: BadgeCheckIcon },
     { label: "To Update", value: "to_update", icon: RefreshCw },
     { label: "Not Found", value: "not_found", icon: XCircle },
-    { label: "Error", value: "error", icon: AlertCircle },
+    { label: "Ambiguous", value: "ambiguous", icon: HelpCircle },
+    { label: "Manual", value: "manual", icon: Hand },
 ];
+
+// Mapeo de hora a icono de reloj (usa hora en formato 12h)
+const getClockIcon = (hour: string) => {
+    const h = parseInt(hour, 10);
+    const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    const icons = { 1: Clock1, 2: Clock2, 3: Clock3, 4: Clock4, 5: Clock5, 6: Clock6, 7: Clock7, 8: Clock8, 9: Clock9, 10: Clock10, 11: Clock11, 12: Clock12 };
+    return icons[hour12 as keyof typeof icons] || Clock12;
+};
 
 // Opciones por defecto cuando no hay datos cargados
 const defaultTimeOptions = [
-    { label: "07:00", value: "07" },
-    { label: "08:00", value: "08" },
-    { label: "09:00", value: "09" },
-    { label: "10:00", value: "10" },
-    { label: "11:00", value: "11" },
-    { label: "12:00", value: "12" },
-    { label: "13:00", value: "13" },
-    { label: "14:00", value: "14" },
-    { label: "15:00", value: "15" },
-    { label: "16:00", value: "16" },
-    { label: "17:00", value: "17" },
-    { label: "18:00", value: "18" },
-    { label: "19:00", value: "19" },
-    { label: "20:00", value: "20" },
-    { label: "21:00", value: "21" },
-    { label: "22:00", value: "22" },
+    { label: "07:00", value: "07", icon: Clock7 },
+    { label: "08:00", value: "08", icon: Clock8 },
+    { label: "09:00", value: "09", icon: Clock9 },
+    { label: "10:00", value: "10", icon: Clock10 },
+    { label: "11:00", value: "11", icon: Clock11 },
+    { label: "12:00", value: "12", icon: Clock12 },
+    { label: "13:00", value: "13", icon: Clock1 },
+    { label: "14:00", value: "14", icon: Clock2 },
+    { label: "15:00", value: "15", icon: Clock3 },
+    { label: "16:00", value: "16", icon: Clock4 },
+    { label: "17:00", value: "17", icon: Clock5 },
+    { label: "18:00", value: "18", icon: Clock6 },
+    { label: "19:00", value: "19", icon: Clock7 },
+    { label: "20:00", value: "20", icon: Clock8 },
+    { label: "21:00", value: "21", icon: Clock9 },
 ];
 
 interface DataTableToolbarProps<TData> {
@@ -126,6 +134,7 @@ export function DataTableToolbar<TData>({
             .map((hour) => ({
                 label: `${hour}:00`,
                 value: hour,
+                icon: getClockIcon(hour),
             }));
     }, [fullData]);
 

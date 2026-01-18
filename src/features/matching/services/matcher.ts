@@ -23,7 +23,8 @@ export interface ZoomUserCandidate {
 
 export interface MatchResult {
     schedule: Schedule;
-    status: 'assigned' | 'to_update' | 'not_found' | 'ambiguous';
+    originalState?: Omit<MatchResult, 'originalState'>; // Backup completo del estado original
+    status: 'assigned' | 'to_update' | 'not_found' | 'ambiguous' | 'manual';
     reason: string; // Mensaje corto para la columna Reason
     detailedReason?: string; // Mensaje detallado para el hover card
     meeting_id?: string;
@@ -37,6 +38,7 @@ export interface MatchResult {
     ambiguousCandidates?: ZoomMeetingCandidate[];
     matchedCandidate?: ZoomMeetingCandidate;
     score?: number;
+    manualMode?: boolean; // Habilita edición manual de checkbox e instructor
 }
 
 /**
@@ -44,10 +46,6 @@ export interface MatchResult {
  * 
  * ARQUITECTURA v2 - Sistema de Scoring
  * =====================================
- * En lugar de múltiples guardrails binarios (pass/fail), este servicio usa
- * un sistema de scoring ponderado donde cada validación aporta una penalización
- * al score base de 100 puntos.
- * 
  * Flujo:
  * 1. Obtener candidatos (Exact Match, Fuse.js, o Token Set Match)
  * 2. Calcular score para cada candidato aplicando penalizaciones
@@ -135,11 +133,80 @@ export class MatchingService {
         const instructorNormalized = normalizeString(schedule.instructor);
 
         // ---------------------------------------------------------------------
-        // PASO 1: Obtener Candidatos de Meeting
+        // PASO 1: Encontrar Instructor (ANTES de evaluar meetings)
+        // Esto permite que found_instructor esté disponible para todos los status
+        // ---------------------------------------------------------------------
+        let instructor: ZoomUserCandidate | undefined;
+
+        if (this.users.length > 0) {
+            // 1.a. Búsqueda Exacta por nombre
+            if (this.usersDict[instructorNormalized]) {
+                instructor = this.usersDict[instructorNormalized];
+            } else if (this.usersDictDisplay[instructorNormalized]) {
+                instructor = this.usersDictDisplay[instructorNormalized];
+            } else {
+                // 1.b. Token Subset Match
+                const queryTokens = new Set(instructorNormalized.split(" "));
+                const tokenMatches = this.users.filter(u => {
+                    const uNameTokens = normalizeString(`${u.first_name} ${u.last_name}`).split(" ");
+                    const uDisplayTokens = normalizeString(u.display_name).split(" ");
+                    return uNameTokens.every(t => queryTokens.has(t)) ||
+                        uDisplayTokens.every(t => queryTokens.has(t));
+                });
+
+                if (tokenMatches.length > 0) {
+                    instructor = tokenMatches.reduce((prev, current) => {
+                        const prevLen = Math.max(
+                            normalizeString(`${prev.first_name} ${prev.last_name}`).split(" ").length,
+                            normalizeString(prev.display_name).split(" ").length
+                        );
+                        const currLen = Math.max(
+                            normalizeString(`${current.first_name} ${current.last_name}`).split(" ").length,
+                            normalizeString(current.display_name).split(" ").length
+                        );
+                        return currLen > prevLen ? current : prev;
+                    });
+                } else {
+                    // 1.c. Fuse.js Fuzzy Match (con validación adicional)
+                    const userResults = this.fuseUsers.search(instructorNormalized);
+                    if (userResults.length > 0 && userResults[0].score !== undefined && userResults[0].score <= 0.45) {
+                        const candidate = userResults[0].item;
+
+                        // Validación adicional: evitar falsos positivos por apellido común
+                        // Requiere que al menos 2 tokens coincidan, o si ambos tienen ≤2 tokens, todos deben coincidir
+                        const candidateTokens = new Set([
+                            ...normalizeString(`${candidate.first_name} ${candidate.last_name}`).split(" "),
+                            ...normalizeString(candidate.display_name).split(" ")
+                        ]);
+                        const queryTokensArr = instructorNormalized.split(" ");
+                        const matchingTokens = queryTokensArr.filter(t => candidateTokens.has(t));
+
+                        const queryTokenCount = queryTokensArr.length;
+                        const minRequiredMatches = queryTokenCount <= 2 ? queryTokenCount : 2;
+
+                        if (matchingTokens.length >= minRequiredMatches) {
+                            instructor = candidate;
+                        }
+                    }
+                }
+            }
+
+            // Setear found_instructor si se encontró
+            if (instructor) {
+                result.found_instructor = {
+                    id: instructor.id,
+                    email: instructor.email,
+                    display_name: instructor.display_name
+                };
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // PASO 2: Obtener Candidatos de Meeting
         // ---------------------------------------------------------------------
         let candidates: ZoomMeetingCandidate[] = [];
 
-        // 1.a. Búsqueda Exacta (ahora devuelve array para manejar colisiones)
+        // 2.a. Búsqueda Exacta (ahora devuelve array para manejar colisiones)
         if (this.meetingsDict[programNormalized]) {
             candidates = this.meetingsDict[programNormalized];
         }
@@ -166,7 +233,7 @@ export class MatchingService {
         }
 
         // ---------------------------------------------------------------------
-        // PASO 2: Evaluar Candidatos con Sistema de Scoring
+        // PASO 3: Evaluar Candidatos con Sistema de Scoring
         // ---------------------------------------------------------------------
         if (candidates.length === 0) {
             result.status = 'not_found';
@@ -206,7 +273,7 @@ export class MatchingService {
         result.score = evaluation.bestMatch!.finalScore;
 
         // ---------------------------------------------------------------------
-        // PASO 3: Encontrar Instructor
+        // PASO 4: Validar Anfitrión
         // ---------------------------------------------------------------------
 
         // Bypass para tests de meetings sin usuarios cargados
@@ -216,59 +283,12 @@ export class MatchingService {
             return result;
         }
 
-        let instructor: ZoomUserCandidate | undefined;
-
-        // 3.a. Búsqueda Exacta
-        if (this.usersDict[instructorNormalized]) {
-            instructor = this.usersDict[instructorNormalized];
-        } else if (this.usersDictDisplay[instructorNormalized]) {
-            instructor = this.usersDictDisplay[instructorNormalized];
-        } else {
-            // 3.b. Token Subset Match
-            const queryTokens = new Set(instructorNormalized.split(" "));
-            const tokenMatches = this.users.filter(u => {
-                const uNameTokens = normalizeString(`${u.first_name} ${u.last_name}`).split(" ");
-                const uDisplayTokens = normalizeString(u.display_name).split(" ");
-                return uNameTokens.every(t => queryTokens.has(t)) ||
-                    uDisplayTokens.every(t => queryTokens.has(t));
-            });
-
-            if (tokenMatches.length > 0) {
-                instructor = tokenMatches.reduce((prev, current) => {
-                    const prevLen = Math.max(
-                        normalizeString(`${prev.first_name} ${prev.last_name}`).split(" ").length,
-                        normalizeString(prev.display_name).split(" ").length
-                    );
-                    const currLen = Math.max(
-                        normalizeString(`${current.first_name} ${current.last_name}`).split(" ").length,
-                        normalizeString(current.display_name).split(" ").length
-                    );
-                    return currLen > prevLen ? current : prev;
-                });
-            } else {
-                // 3.c. Fuse.js Fuzzy Match
-                const userResults = this.fuseUsers.search(instructorNormalized);
-                if (userResults.length > 0 && userResults[0].score !== undefined && userResults[0].score <= 0.45) {
-                    instructor = userResults[0].item;
-                }
-            }
-        }
-
         if (!instructor) {
             result.status = 'not_found';
             result.reason = 'Instructor not found';
             return result;
         }
 
-        result.found_instructor = {
-            id: instructor.id,
-            email: instructor.email,
-            display_name: instructor.display_name
-        };
-
-        // ---------------------------------------------------------------------
-        // PASO 4: Validar Anfitrión
-        // ---------------------------------------------------------------------
         if (meeting.host_id === instructor.id) {
             result.status = 'assigned';
             result.reason = evaluation.confidence === 'high' ? '-' : `Score: ${result.score}`;

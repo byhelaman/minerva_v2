@@ -1,13 +1,13 @@
 import { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { Schedule } from "@schedules/utils/excel-parser";
 import { Checkbox } from "@/components/ui/checkbox";
-import { XCircle, RefreshCw, AlertCircle, BadgeCheckIcon, MoreHorizontal, Check, ChevronsUpDown, HelpCircle } from "lucide-react";
+import { MoreHorizontal, Hand, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ZoomMeetingCandidate } from "@/features/matching/services/matcher";
+import { StatusCell } from "./cells/StatusCell";
+import { InstructorCell } from "./cells/InstructorCell";
 
 // Definir la estructura de los datos de asignación
 // Esto extiende Schedule pero se centra en el aspecto de la asignación
@@ -17,18 +17,25 @@ export interface AssignmentRow extends Schedule {
     time: string; // Hora combinada/formateada
     // instructor: string; // Ya en Schedule
     // program: string; // Ya en Schedule
-    status: 'assigned' | 'to_update' | 'not_found' | 'ambiguous';
+    status: 'assigned' | 'to_update' | 'not_found' | 'ambiguous' | 'manual';
     reason: string; // Mensaje corto para la columna Reason
     detailedReason?: string; // Mensaje detallado para el hover card
     originalSchedule: Schedule; // Mantener referencia a los datos originales
     matchedCandidate?: ZoomMeetingCandidate; // Assigned meeting details
     ambiguousCandidates?: ZoomMeetingCandidate[]; // List of ambiguous options
+    manualMode?: boolean; // Habilita edición manual de checkbox e instructor
 }
 
-// Modificado para aceptar lista dinámica de instructores y mapa de hosts
+// Modificado para aceptar lista dinámica de instructores, mapa de hosts, y callbacks
 export const getAssignmentColumns = (
     instructorsList: string[] = [],
-    hostMap: Map<string, string> = new Map()
+    hostMap: Map<string, string> = new Map(),
+    onInstructorChange?: (rowId: string, newInstructor: string) => void,
+    onManualModeToggle?: (rowId: string) => void,
+    onSelectCandidate?: (rowId: string, candidate: ZoomMeetingCandidate) => void,
+    onDeselectCandidate?: (rowId: string) => void,
+    onAddStatusFilter?: (status: string) => void,
+    onResetRow?: (rowId: string) => void
 ): ColumnDef<AssignmentRow>[] => [
 
         {
@@ -47,16 +54,21 @@ export const getAssignmentColumns = (
                     />
                 </div>
             ),
-            cell: ({ row }) => (
-                <div className="flex justify-center">
-                    <Checkbox
-                        checked={row.getIsSelected()}
-                        onCheckedChange={(value) => row.toggleSelected(!!value)}
-                        aria-label="Select row"
-                        className="translate-y-[2px] mb-1"
-                    />
-                </div>
-            ),
+            cell: ({ row }) => {
+                const isAssigned = row.original.status === 'assigned';
+                const isManualMode = row.original.manualMode === true;
+                return (
+                    <div className="flex justify-center">
+                        <Checkbox
+                            checked={row.getIsSelected()}
+                            onCheckedChange={(value) => row.toggleSelected(!!value)}
+                            disabled={isAssigned && !isManualMode}
+                            aria-label="Select row"
+                            className="translate-y-[2px] mb-1"
+                        />
+                    </div>
+                );
+            },
             enableSorting: false,
             enableHiding: false,
         },
@@ -66,8 +78,21 @@ export const getAssignmentColumns = (
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="Meeting ID" className="text-center" />
             ),
-            cell: ({ row }) => <div className="font-mono text-center min-w-[100px]">{row.getValue("meetingId") || "—"}
-            </div>,
+            cell: ({ row }) => {
+                const meetingId = row.getValue("meetingId") as string;
+                const isValidId = meetingId && meetingId !== "-" && meetingId !== "—";
+                return (
+                    <div className="font-mono text-center min-w-[100px]">
+                        {isValidId ? (
+                            <a href={`https://zoom.us/meeting/${meetingId}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline cursor-pointer underline underline-offset-2">
+                                {meetingId}
+                            </a>
+                        ) : (
+                            "—"
+                        )}
+                    </div>
+                );
+            },
             enableSorting: false,
         },
         {
@@ -86,49 +111,13 @@ export const getAssignmentColumns = (
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="Instructor" />
             ),
-            cell: ({ row }) => {
-                return (
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant="outline"
-                                role="combobox"
-                                className="w-full max-w-[180px] justify-between gap-2 px-3 rounded-lg"
-                            >
-                                <span className="truncate font-normal">
-                                    {row.getValue("instructor") || "Select instructor"}
-                                </span>
-                                <ChevronsUpDown className="text-muted-foreground" />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[200px] p-0" align="start">
-                            <Command>
-                                <CommandInput placeholder="Search instructor..." />
-                                <CommandList>
-                                    <CommandEmpty>No instructor found.</CommandEmpty>
-                                    <CommandGroup className="max-h-[300px] overflow-y-auto">
-                                        {instructorsList.map((instructor) => (
-                                            <CommandItem
-                                                key={instructor}
-                                                value={instructor}
-                                            >
-                                                <Check
-                                                    className={
-                                                        row.getValue("instructor") === instructor
-                                                            ? "opacity-100"
-                                                            : "opacity-0"
-                                                    }
-                                                />
-                                                <span className="truncate">{instructor}</span>
-                                            </CommandItem>
-                                        ))}
-                                    </CommandGroup>
-                                </CommandList>
-                            </Command>
-                        </PopoverContent>
-                    </Popover>
-                );
-            },
+            cell: ({ row }) => (
+                <InstructorCell
+                    row={row}
+                    instructorsList={instructorsList}
+                    onInstructorChange={onInstructorChange}
+                />
+            ),
         },
         {
             accessorKey: "program",
@@ -147,137 +136,18 @@ export const getAssignmentColumns = (
             header: ({ column }) => (
                 <DataTableColumnHeader column={column} title="Status" />
             ),
-            cell: ({ row }) => {
-                const status = row.getValue("status") as string;
-                const matched = row.original.matchedCandidate;
-                const ambiguous = row.original.ambiguousCandidates;
-
-                let badge;
-                if (status === 'assigned') {
-                    badge = (
-                        <Badge variant="outline" className="border-green-600 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-500 dark:text-green-400 cursor-pointer hover:bg-green-100 user-select-none">
-                            <BadgeCheckIcon />
-                            Assigned
-                        </Badge>
-                    );
-                } else if (status === 'not_found') {
-                    badge = (
-                        <Badge variant="outline" className="border-destructive/50 text-destructive cursor-pointer bg-destructive/5 dark:border-destructive/50">
-                            <XCircle />
-                            Not Found
-                        </Badge>
-                    );
-                } else if (status === 'to_update') {
-                    badge = (
-                        <Badge variant="outline" className="text-muted-foreground cursor-pointer hover:bg-gray-100">
-                            <RefreshCw />
-                            To Update
-                        </Badge>
-                    );
-                } else if (status === 'ambiguous') {
-                    badge = (
-                        <Badge variant="outline" className="border-orange-500/50 text-orange-600 bg-orange-500/10 dark:text-orange-400 cursor-pointer hover:bg-orange-500/20">
-                            <HelpCircle />
-                            Ambiguo
-                        </Badge>
-                    );
-                } else {
-                    badge = (
-                        <Badge variant="outline">
-                            <AlertCircle />
-                            {status}
-                        </Badge>
-                    );
-                }
-
-                return (
-                    <Popover modal={true}>
-                        <PopoverTrigger asChild>
-                            {badge}
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80 p-0 rounded-lg">
-                            <div className="p-4 space-y-4">
-                                {status === 'not_found' ? (
-                                    <>
-                                        <div>
-                                            <h4 className="font-semibold text-sm text-destructive mb-3">Not Found</h4>
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <div className="text-xs font-medium text-muted-foreground mb-1">Reason</div>
-                                                    <div className="text-sm">{row.original.reason || "No match found"}</div>
-                                                </div>
-                                                {row.original.detailedReason && (
-                                                    <div className="pt-3 border-t">
-                                                        <div className="text-xs font-medium text-muted-foreground mb-2">Details</div>
-                                                        <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
-                                                            {row.original.detailedReason}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : status === 'ambiguous' && ambiguous && ambiguous.length > 0 ? (
-                                    <>
-                                        <div>
-                                            <div className="flex items-center justify-between mb-3">
-                                                <h4 className="font-semibold text-sm">Ambiguous Matches</h4>
-                                                <Badge variant="secondary" className="text-xs">{ambiguous.length} options</Badge>
-                                            </div>
-                                            {row.original.detailedReason && (
-                                                <div className="mb-4 pb-3 border-b">
-                                                    <div className="text-xs font-medium text-muted-foreground mb-2">Details</div>
-                                                    <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
-                                                        {row.original.detailedReason}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <div className="space-y-2 max-h-[280px] overflow-y-auto no-scrollbar">
-                                                {ambiguous.map((cand, i) => (
-                                                    <div key={i} className="border rounded-md p-2.5 hover:bg-accent/50 transition-colors">
-                                                        <div className="font-medium text-sm mb-1">{cand.topic}</div>
-                                                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                                                            <span className="text-nowrap">ID: {cand.meeting_id}</span>
-                                                            <span className="truncate">Host: {hostMap.get(cand.host_id) || cand.host_id}</span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : matched ? (
-                                    <>
-                                        <div>
-                                            <h4 className="font-semibold text-sm mb-3">Meeting Assigned</h4>
-                                            <div className="space-y-2.5">
-                                                <div>
-                                                    <div className="text-xs font-medium text-muted-foreground mb-1">Topic</div>
-                                                    <div className="text-sm">{matched.topic}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs font-medium text-muted-foreground mb-1">Meeting ID</div>
-                                                    <div className="text-sm font-mono">{matched.meeting_id}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs font-medium text-muted-foreground mb-1">Start Time</div>
-                                                    <div className="text-sm">{matched.start_time}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs font-medium text-muted-foreground mb-1">Host ID</div>
-                                                    <div className="text-sm font-mono text-xs truncate" title={matched.host_id}>{hostMap.get(matched.host_id) || matched.host_id}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="text-sm text-muted-foreground">No details available</div>
-                                )}
-                            </div>
-                        </PopoverContent>
-                    </Popover>
-                );
+            cell: ({ row }) => (
+                <StatusCell
+                    row={row}
+                    hostMap={hostMap}
+                    onSelectCandidate={onSelectCandidate}
+                    onDeselectCandidate={onDeselectCandidate}
+                    onAddStatusFilter={onAddStatusFilter}
+                />
+            ),
+            filterFn: (row, id, value) => {
+                return value.includes(row.getValue(id));
             },
-            // enableColumnFilter: false,
             enableGlobalFilter: false,
         },
         {
@@ -294,13 +164,44 @@ export const getAssignmentColumns = (
         {
             id: "actions",
             size: 50,
-            cell: () => (
-                <div className="flex justify-center">
-                    <Button variant="ghost" size="icon-sm">
-                        <span className="sr-only">Open menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                </div>
-            ),
+            cell: ({ row }) => {
+                return (
+                    <div className="flex justify-center">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon-sm">
+                                    <span className="sr-only">Open menu</span>
+                                    <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                    disabled={row.original.status === 'not_found'}
+                                    onClick={() => {
+                                        if (onManualModeToggle) {
+                                            onManualModeToggle(row.original.id);
+                                        }
+                                    }}
+                                >
+                                    <Hand />
+                                    Manual mode
+                                </DropdownMenuItem>
+                                {row.original.manualMode && (
+                                    <DropdownMenuItem
+                                        onClick={() => {
+                                            if (onResetRow) {
+                                                onResetRow(row.original.id);
+                                            }
+                                        }}
+                                    >
+                                        <RotateCcw />
+                                        Reset match
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                );
+            },
         },
     ];

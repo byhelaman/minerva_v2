@@ -51,7 +51,9 @@ export function DataTableRowActions({
                     onClick={() => {
                         const timeRange = `${schedule.start_time} - ${schedule.end_time}`;
                         navigator.clipboard.writeText(`${schedule.date}\n${schedule.program}\n${timeRange}`);
-                        toast.success("Schedule details copied");
+                        toast.success("Details copied", {
+                            description: `${schedule.program} - ${timeRange}`,
+                        });
                     }}
                 >
                     Copy details

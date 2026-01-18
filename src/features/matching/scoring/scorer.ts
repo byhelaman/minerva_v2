@@ -10,7 +10,6 @@ import type { ScoringContext, ScoringResult, MatchEvaluation, AppliedPenalty } f
 import { ALL_PENALTIES } from './penalties';
 import { BASE_SCORE, THRESHOLDS } from '../config/matching.config';
 import { normalizeString } from '../utils/normalizer';
-import { logger } from '@/lib/logger';
 
 /**
  * Convierte un nombre de penalización técnica en un mensaje corto y claro para el usuario
@@ -151,17 +150,29 @@ export function evaluateMatch(
         const bestRejected = results[0];
         const mainPenalty = bestRejected?.penalties[0];
 
+        // Si hay candidatos rechazados, devolver ambiguous para permitir selección manual
+        if (results.length > 0) {
+            return {
+                bestMatch: bestRejected || null,
+                allResults: results,
+                decision: 'ambiguous',
+                confidence: 'low',
+                reason: mainPenalty ? getShortReason(mainPenalty) : 'No valid matches',
+                detailedReason: mainPenalty
+                    ? getDetailedReason(mainPenalty, bestRejected?.penalties || [])
+                    : 'Candidates found but rejected. Review and select manually if appropriate.',
+                ambiguousCandidates: results.slice(0, 5).map(r => r.candidate),
+            };
+        }
+
+        // Sin candidatos en absoluto
         return {
-            bestMatch: bestRejected || null,
+            bestMatch: null,
             allResults: results,
             decision: 'not_found',
             confidence: 'none',
-            reason: mainPenalty
-                ? getShortReason(mainPenalty)
-                : 'No match found',
-            detailedReason: mainPenalty
-                ? getDetailedReason(mainPenalty, bestRejected?.penalties || [])
-                : 'No candidates meet minimum requirements',
+            reason: 'No match found',
+            detailedReason: 'No meetings found for this schedule. The meeting may not exist in Zoom or uses a different naming convention.',
         };
     }
 
@@ -172,16 +183,8 @@ export function evaluateMatch(
     if (second) {
         const scoreDiff = best.finalScore - second.finalScore;
         if (scoreDiff < THRESHOLDS.AMBIGUITY_DIFF) {
-            logger.debug('⚠️ Ambiguity Detected:');
-            logger.debug(`   1. ${best.candidate.topic} (Score: ${best.finalScore})`);
-            best.penalties.forEach(p => logger.debug(`      - ${p.name}: ${p.points} (${p.reason})`));
 
-            logger.debug(`   2. ${second.candidate.topic} (Score: ${second.finalScore})`);
-            second.penalties.forEach(p => logger.debug(`      - ${p.name}: ${p.points} (${p.reason})`));
-
-            logger.debug(`   Diff: ${scoreDiff} < ${THRESHOLDS.AMBIGUITY_DIFF}`);
-
-            const detailedReason = 'High ambiguity detected between top candidates. Please review the list and manually select the best match.';
+            const detailedReason = 'Multiple matches found. Please review the list and manually select the best match.';
 
             return {
                 decision: 'ambiguous',
@@ -256,22 +259,3 @@ export function evaluateMatch(
     };
 }
 
-/**
- * Genera un log detallado del resultado del scoring (para debug)
- */
-export function logScoringResult(rawProgram: string, result: ScoringResult): void {
-    logger.debug(`📊 Score: ${result.finalScore}/${result.baseScore}`);
-    logger.debug(`   Query: ${rawProgram}`);
-    logger.debug(`   Candidato: ${result.candidate.topic}`);
-    if (result.penalties.length > 0) {
-        logger.debug(`   Penalizaciones:`);
-        result.penalties.forEach(p => {
-            logger.debug(`     - ${p.name}: ${p.points} (${p.reason || ''})`);
-        });
-    } else {
-        logger.debug(`   ✅ Sin penalizaciones`);
-    }
-    if (result.isDisqualified) {
-        logger.debug(`   ❌ DESCALIFICADO`);
-    }
-}

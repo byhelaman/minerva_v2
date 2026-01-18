@@ -53,10 +53,11 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
     },
     {
         accessorKey: "branch",
+        size: 140,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Branch" />
         ),
-        cell: ({ row }) => <div className="w-[100px]">{row.getValue("branch")}</div>,
+        cell: ({ row }) => <div>{row.getValue("branch")}</div>,
         // Filtro con coincidencia parcial:
         // - "CORPORATE" coincide con "CORPORATE" y "CORPORATE/KIDS"
         // - "KIDS" coincide con cualquier branch que contenga "KIDS"
@@ -67,10 +68,15 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
     },
     {
         accessorKey: "start_time",
+        size: 130,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Start" />
+            <DataTableColumnHeader column={column} title="Time" className="justify-center" />
         ),
-        cell: ({ row }) => <div className="w-[80px]">{row.getValue("start_time")}</div>,
+        cell: ({ row }) => (
+            <div className="mx-auto text-center">
+                {row.getValue("start_time")} - {row.original.end_time}
+            </div>
+        ),
         // Filtro por hora: extrae la hora del tiempo (ej: "08" de "08:30")
         filterFn: (row, id, filterValues: string[]) => {
             const cellValue = row.getValue(id) as string;
@@ -79,31 +85,22 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
         },
     },
     {
-        accessorKey: "end_time",
-        header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="End" />
-        ),
-        cell: ({ row }) => <div className="w-[80px]">{row.getValue("end_time")}</div>,
-    },
-    {
         accessorKey: "instructor",
+        size: 150,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Instructor" />
         ),
         cell: ({ row }) => (
-            <div className="max-w-[200px] truncate font-medium">
-                {row.getValue("instructor")}
-            </div>
+            <div>{row.getValue("instructor")}</div>
         ),
     },
     {
         accessorKey: "program",
-        size: 380,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Program" />
         ),
         cell: ({ row }) => (
-            <div className="max-w-[360px] truncate">
+            <div>
                 {row.getValue("program")}
             </div>
         ),

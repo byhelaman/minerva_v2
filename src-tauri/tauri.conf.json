@@ -12,14 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "minerva_v2",
+        "title": "Minerva",
         "width": 1600,
         "height": 900,
         "minWidth": 900,
         "minHeight": 680,
-        "maxWidth": 1600,
-        "maxHeight": 900,
-        "maximizable": false,
         "dragDropEnabled": false
       }
     ],

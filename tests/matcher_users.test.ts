@@ -67,4 +67,17 @@ describe('MatchingService - Users', () => {
         const result = matcher.findMatch(schedule);
         expect(result.found_instructor).toBeUndefined();
     });
+
+    it('should NOT match Fiorela Garcia when searching for Ana Garcia', () => {
+        // Preparar matcher con usuario Fiorela Garcia
+        const usersWithFiorela: ZoomUserCandidate[] = [
+            { id: 'fg1', email: 'fiorela@test.com', first_name: 'Fiorela', last_name: 'Garcia', display_name: 'Fiorela Garcia' },
+        ];
+        const matcherWithFiorela = new MatchingService(mockMeetings, usersWithFiorela);
+
+        // Buscar Ana Garcia - no debería matchear con Fiorela Garcia (solo comparten apellido)
+        const schedule = { program: 'Any Program', instructor: 'Ana Garcia' } as any;
+        const result = matcherWithFiorela.findMatch(schedule);
+        expect(result.found_instructor).toBeUndefined();
+    });
 });

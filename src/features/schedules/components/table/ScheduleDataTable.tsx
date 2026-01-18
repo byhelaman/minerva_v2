@@ -29,7 +29,7 @@ import { detectOverlaps, getScheduleKey } from "@schedules/utils/overlap-utils";
 import { Schedule } from "@schedules/utils/excel-parser";
 
 interface ScheduleDataTableProps<TData, TValue> {
-    columns: ColumnDef<TData, TValue>[];
+    columns: ColumnDef<TData, TValue>[] | ((addStatusFilter: (status: string) => void) => ColumnDef<TData, TValue>[]);
     data: TData[];
     onUploadClick?: () => void;
     onClearSchedule?: () => void;
@@ -59,6 +59,33 @@ export function ScheduleDataTable<TData, TValue>({
     const [globalFilter, setGlobalFilter] = React.useState("");
     const [showOverlapsOnly, setShowOverlapsOnly] = React.useState(false);
 
+    // Función para agregar un status al filtro de status
+    const addStatusFilter = React.useCallback((status: string) => {
+        setColumnFilters(prev => {
+            const statusFilter = prev.find(f => f.id === 'status');
+            if (statusFilter) {
+                const currentValues = statusFilter.value as string[];
+                if (!currentValues.includes(status)) {
+                    return prev.map(f =>
+                        f.id === 'status'
+                            ? { ...f, value: [...currentValues, status] }
+                            : f
+                    );
+                }
+            }
+            // Si no hay filtro de status activo, no hacer nada
+            return prev;
+        });
+    }, []);
+
+    // Resolver columns - pueden ser una función o un array directo
+    const resolvedColumns = React.useMemo(() => {
+        if (typeof columns === 'function') {
+            return columns(addStatusFilter);
+        }
+        return columns;
+    }, [columns, addStatusFilter]);
+
     const overlapResult = React.useMemo(() => {
         if (props.hideOverlaps) {
             return {
@@ -80,7 +107,7 @@ export function ScheduleDataTable<TData, TValue>({
 
     const table = useReactTable({
         data: tableData,
-        columns,
+        columns: resolvedColumns,
         state: {
             sorting,
             columnVisibility,
@@ -105,6 +132,7 @@ export function ScheduleDataTable<TData, TValue>({
         getSortedRowModel: getSortedRowModel(),
         getFacetedRowModel: getFacetedRowModel(),
         getFacetedUniqueValues: getFacetedUniqueValues(),
+        autoResetPageIndex: false, // Mantener la página actual cuando los datos cambian
     });
 
     return (
@@ -182,7 +210,7 @@ export function ScheduleDataTable<TData, TValue>({
                         ) : (
                             <TableRow>
                                 <TableCell
-                                    colSpan={columns.length}
+                                    colSpan={resolvedColumns.length}
                                     className="h-24 text-center"
                                 >
                                     No results.

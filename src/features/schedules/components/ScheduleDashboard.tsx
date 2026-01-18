@@ -132,6 +132,8 @@ export function ScheduleDashboard() {
     const handleClearSchedule = async () => {
         try {
             setSchedules([]);
+            // Limpiar también los resultados de matching
+            useZoomStore.setState({ matchResults: [] });
             // Eliminar autosave si existe
             const fileExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
             if (fileExists) {
@@ -192,6 +194,7 @@ export function ScheduleDashboard() {
                         <Button
                             size="sm"
                             onClick={() => setIsAssignModalOpen(true)}
+                            disabled={schedules.length === 0}
                         >
                             <Bot />
                             Assign
