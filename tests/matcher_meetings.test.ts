@@ -101,7 +101,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'TRIO NOVA L4 (NOVA)(PRESENCIAL-TRAVEL)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined(); // Now correctly rejected
-        expect(result.status).toBe('not_found');
+        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
     });
 
     // debe dar error, no debe hacer matching
@@ -117,7 +117,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'DUO TECHCORP L4 (ONLINE)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined();
-        expect(result.status).toBe('not_found'); // Debe ser not_found por el guardrail
+        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility // Debe ser not_found por el guardrail
     });
 
     // debe hacer matching
@@ -154,7 +154,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'TRIO GLOBALTECH N8 (PRESENCIAL-TRAVEL)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined(); // No matchea porque CH != TRIO
-        expect(result.status).toBe('not_found');
+        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
     });
 
     // Este test sigue siendo válido - Level Mismatch (L3 vs L2) sigue activo
@@ -162,7 +162,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'CH ACME L3 (ONLINE)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined();
-        expect(result.status).toBe('not_found'); // Level conflict results in not_found
+        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility // Level conflict results in not_found
     });
 
     // Conflicto de Número de Grupo - CH 1 no debe matchear con CH 3
@@ -171,7 +171,7 @@ describe('MatchingService - Meetings', () => {
         const result = matcher.findMatch(schedule);
         // No debe matchear porque "1" != "3" (aunque comparten "2" del nivel L2)
         expect(result.meeting_id).toBeUndefined();
-        expect(result.status).toBe('not_found');
+        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
     });
 
 });
@@ -236,7 +236,7 @@ describe('MatchingService - Ambiguous Cases', () => {
         // Debe marcar ambiguo (ya sea por scores similares o por números huérfanos)
         const schedule = { program: 'CH ACME L2 (ONLINE)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
-        expect(result.status).toBe('not_found');
+        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
         // El candidato fue rechazado por Level Conflict
     });
 

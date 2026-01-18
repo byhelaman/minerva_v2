@@ -55,6 +55,7 @@ export function SettingsPage() {
             updateSetting("autoSave", true);
             updateSetting("theme", "system");
             updateSetting("openAfterExport", true);
+            updateSetting("clearScheduleOnLoad", false);
             setTheme("system"); // Apply theme reset
 
             if (filesDeleted > 0) {
@@ -196,6 +197,20 @@ export function SettingsPage() {
                                     id="auto-save"
                                     checked={settings.autoSave}
                                     onCheckedChange={(checked) => updateSetting("autoSave", checked)}
+                                    className="h-[20px] w-[36px] [&_span[data-slot=switch-thumb]]:size-4 [&_span[data-slot=switch-thumb]]:data-[state=checked]:translate-x-4"
+                                />
+                            </div>
+                            <div className="flex items-center justify-between space-x-2">
+                                <Label htmlFor="clear-schedule-on-load" className="flex flex-col items-start">
+                                    <span>{t("settings.automation.clear_schedule_on_load")}</span>
+                                    <span className="font-normal text-xs text-muted-foreground">
+                                        {t("settings.automation.clear_schedule_on_load_desc")}
+                                    </span>
+                                </Label>
+                                <Switch
+                                    id="clear-schedule-on-load"
+                                    checked={settings.clearScheduleOnLoad}
+                                    onCheckedChange={(checked) => updateSetting("clearScheduleOnLoad", checked)}
                                     className="h-[20px] w-[36px] [&_span[data-slot=switch-thumb]]:size-4 [&_span[data-slot=switch-thumb]]:data-[state=checked]:translate-x-4"
                                 />
                             </div>

@@ -26,6 +26,9 @@ interface ZoomState {
     // Estado de Carga de Datos
     isLoadingData: boolean;
 
+    // Estado de Ejecución de Asignaciones
+    isExecuting: boolean;
+
     // Worker Instance
     worker: Worker | null,
 
@@ -34,6 +37,7 @@ interface ZoomState {
     triggerSync: () => Promise<void>;
     runMatching: (schedules: Schedule[]) => Promise<void>;
     resolveConflict: (schedule: Schedule, selectedMeeting: ZoomMeetingCandidate) => void;
+    executeAssignments: (meetingIds?: string[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
 
     // Método interno para inicializar el worker
     _initWorker: (meetings: ZoomMeetingCandidate[], users: ZoomUser[]) => void;
@@ -48,6 +52,7 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
     syncError: null,
     lastSyncedAt: null,
     isLoadingData: false,
+    isExecuting: false,
     worker: null,
 
     // Cache interno eliminado a favor del worker
@@ -245,6 +250,204 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
             return r;
         });
         set({ matchResults: results });
+    },
+
+    executeAssignments: async (meetingIds?: string[]) => {
+        const { matchResults } = get();
+
+        // Filtrar: 'to_update' o 'manual' (ambiguedad resuelta) con meeting_id e instructor
+        // Si se proporcionan meetingIds, filtrar solo esos
+        let toUpdate = matchResults.filter(r =>
+            (r.status === 'to_update' || r.status === 'manual') &&
+            r.meeting_id &&
+            r.found_instructor
+        );
+
+        if (meetingIds && meetingIds.length > 0) {
+            toUpdate = toUpdate.filter(r => meetingIds.includes(r.meeting_id!));
+        }
+
+        if (toUpdate.length === 0) {
+            return { succeeded: 0, failed: 0, errors: ['No assignments to execute'] };
+        }
+
+        set({ isExecuting: true });
+
+        try {
+            // Construir requests para batch
+            const requests = toUpdate.map(result => {
+                const schedule = result.schedule;
+                const instructor = result.found_instructor!;
+
+                // Calcular duración
+                const duration = calculateDuration(schedule.start_time, schedule.end_time);
+
+                // Construir start_time ISO
+                const startTimeISO = toISODateTime(schedule.date, schedule.start_time);
+
+                // Construir recurrence
+                const recurrence = buildRecurrence(schedule.date);
+
+                return {
+                    meeting_id: result.meeting_id!,
+                    schedule_for: instructor.email,
+                    start_time: startTimeISO,
+                    duration,
+                    timezone: 'America/Lima',
+                    recurrence
+                };
+            });
+
+            // Llamar Edge Function
+            const { data, error } = await supabase.functions.invoke('zoom-api', {
+                body: { batch: true, requests }
+            });
+
+            if (error) {
+                set({ isExecuting: false });
+                return { succeeded: 0, failed: toUpdate.length, errors: [error.message] };
+            }
+
+            const response = data as {
+                batch: boolean;
+                total: number;
+                succeeded: number;
+                failed: number;
+                results: Array<{ meeting_id: string; success: boolean; error?: string }>;
+            };
+
+            // Actualizar matchResults con los resultados
+            const updatedResults = matchResults.map(r => {
+                if (r.status !== 'to_update' || !r.meeting_id) return r;
+
+                const result = response.results.find(res => res.meeting_id === r.meeting_id);
+                if (result?.success) {
+                    return { ...r, status: 'assigned' as const, reason: 'Updated' };
+                }
+                return r;
+            });
+
+            set({ matchResults: updatedResults, isExecuting: false });
+
+            const errors = response.results
+                .filter(r => !r.success && r.error)
+                .map(r => `${r.meeting_id}: ${r.error}`);
+
+            return {
+                succeeded: response.succeeded,
+                failed: response.failed,
+                errors
+            };
+        } catch (err) {
+            set({ isExecuting: false });
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            return { succeeded: 0, failed: toUpdate.length, errors: [message] };
+        }
     }
 }));
+
+// ========== Utilidades ==========
+
+/** Calcular duración en minutos entre start_time y end_time */
+function calculateDuration(startTime: string, endTime: string): number {
+    try {
+        const [startH, startM] = startTime.split(':').map(Number);
+        const [endH, endM] = endTime.split(':').map(Number);
+
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+
+        const diff = endMinutes - startMinutes;
+        return diff > 0 ? diff : 60; // Default 60 si falla
+    } catch {
+        return 60;
+    }
+}
+
+/** Convertir fecha y hora a ISO 8601 (hora local sin conversión UTC) */
+function toISODateTime(dateStr: string, timeStr: string): string {
+    try {
+        // Intentar formatos: DD/MM/YYYY, YYYY-MM-DD
+        let year: number, month: number, day: number;
+
+        if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts[0].length === 4) {
+                // YYYY/MM/DD
+                [year, month, day] = parts.map(Number);
+            } else {
+                // DD/MM/YYYY (formato Perú)
+                [day, month, year] = parts.map(Number);
+            }
+        } else if (dateStr.includes('-')) {
+            [year, month, day] = dateStr.split('-').map(Number);
+        } else {
+            return '';
+        }
+
+        const [hours, minutes] = timeStr.split(':').map(Number);
+
+        // Construir string ISO directamente sin conversión UTC
+        // Formato: yyyy-MM-ddTHH:mm:ss (Zoom usa timezone por separado)
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;
+    } catch {
+        return '';
+    }
+}
+
+/** Obtener día de semana en formato Zoom (1=Sun, 2=Mon...7=Sat) */
+function getZoomWeekday(dateStr: string): number {
+    try {
+        let year: number, month: number, day: number;
+
+        if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts[0].length === 4) {
+                [year, month, day] = parts.map(Number);
+            } else {
+                [day, month, year] = parts.map(Number);
+            }
+        } else if (dateStr.includes('-')) {
+            [year, month, day] = dateStr.split('-').map(Number);
+        } else {
+            return 2; // Default Monday
+        }
+
+        const date = new Date(year, month - 1, day);
+        const jsDay = date.getDay(); // 0=Sun, 1=Mon...6=Sat
+        return jsDay === 0 ? 1 : jsDay + 1; // 1=Sun, 2=Mon...7=Sat
+    } catch {
+        return 2;
+    }
+}
+
+/** Construir objeto recurrence para Zoom API */
+function buildRecurrence(dateStr: string): {
+    type: number;
+    repeat_interval: number;
+    weekly_days: string;
+    end_date_time: string;
+} {
+    // Base: Lun-Jue (2,3,4,5)
+    const baseDays = new Set([2, 3, 4, 5]);
+
+    // Agregar el día del schedule
+    const scheduleDay = getZoomWeekday(dateStr);
+    baseDays.add(scheduleDay);
+
+    const weeklyDays = [...baseDays].sort((a, b) => a - b).join(',');
+
+    // end_date: 120 días desde hoy
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 120);
+    const endDateTime = endDate.toISOString();
+
+    return {
+        type: 2, // Weekly
+        repeat_interval: 1,
+        weekly_days: weeklyDays,
+        end_date_time: endDateTime
+    };
+}
 

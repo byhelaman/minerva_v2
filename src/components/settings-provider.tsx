@@ -8,6 +8,7 @@ interface AppSettings {
     autoSave: boolean;
     theme: "light" | "dark" | "system";
     openAfterExport: boolean;
+    clearScheduleOnLoad: boolean;
 }
 
 interface SettingsContextType {
@@ -21,6 +22,7 @@ const defaultSettings: AppSettings = {
     autoSave: true,
     theme: "system",
     openAfterExport: true,
+    clearScheduleOnLoad: false,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);

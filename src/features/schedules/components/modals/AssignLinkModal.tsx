@@ -7,6 +7,7 @@ import { Schedule } from "@schedules/utils/excel-parser";
 import { useZoomStore } from "@/features/matching/stores/useZoomStore";
 import { useInstructors } from "@/features/schedules/hooks/useInstructors";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface AssignLinkModalProps {
     open: boolean;
@@ -15,9 +16,17 @@ interface AssignLinkModalProps {
 }
 
 export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkModalProps) {
-    const { fetchZoomData, runMatching, matchResults, meetings, users, isLoadingData } = useZoomStore();
+    const { fetchZoomData, runMatching, matchResults, meetings, users, isLoadingData, executeAssignments, isExecuting } = useZoomStore();
     const instructorsList = useInstructors();
     const [isMatching, setIsMatching] = useState(false);
+    const [selectedRows, setSelectedRows] = useState<AssignmentRow[]>([]);
+
+    // Limpiar selectedRows cuando el modal se cierra
+    useEffect(() => {
+        if (!open) {
+            setSelectedRows([]);
+        }
+    }, [open]);
 
     // Helper para generar ID único por fila (date + start_time + program)
     const getRowId = (schedule: Schedule): string => {
@@ -80,24 +89,33 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
     const handleInstructorChange = (rowId: string, newInstructor: string) => {
         // Actualizar el instructor en los matchResults del store
         const currentResults = useZoomStore.getState().matchResults;
+        const zoomUsers = useZoomStore.getState().users;
+
+        // Buscar el usuario de Zoom por display_name exacto (viene del dropdown)
+        const foundUser = zoomUsers.find(u => u.display_name === newInstructor);
+        const newFoundInstructor = foundUser ? {
+            id: foundUser.id,
+            email: foundUser.email,
+            display_name: foundUser.display_name || `${foundUser.first_name} ${foundUser.last_name}`
+        } : undefined;
+
         const updatedResults = currentResults.map(r => {
             const id = getRowId(r.schedule);
             if (id === rowId) {
                 // Crear backup del estado si no existe
                 const { originalState: existingBackup, ...currentState } = r;
-                // Si ya existe backup, lo mantenemos. Si no, usamos el estado actual como backup.
-                // Cast a any temporal para evitar conflictos de tipos recursivos complejos con Omit durante el desarrollo rápido,
-                // pero estructuralmente es correcto: guardamos el MatchResult sin la propiedad originalState.
                 const backup = existingBackup || (currentState as any);
+
+                // Mantener 'manual' si ya era manual, de lo contrario 'to_update'
+                const newStatus = r.status === 'manual' ? 'manual' as const : 'to_update' as const;
 
                 return {
                     ...r,
                     schedule: { ...r.schedule, instructor: newInstructor },
                     originalState: backup,
-                    // Al cambiar instructor manualmente, invalidamos el match anterior
-                    found_instructor: undefined,
-                    status: 'to_update' as const, // Marcar para re-procesar o actualizar
-                    reason: 'Instructor updated manually'
+                    found_instructor: newFoundInstructor,
+                    status: newStatus,
+                    reason: 'Change host'
                 };
             }
             return r;
@@ -211,7 +229,8 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                 originalSchedule: r.schedule,
                 matchedCandidate: r.matchedCandidate,
                 ambiguousCandidates: r.ambiguousCandidates,
-                manualMode: r.manualMode
+                manualMode: r.manualMode,
+                found_instructor: r.found_instructor
             };
         });
     }, [matchResults]);
@@ -246,6 +265,13 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                             columns={getColumns}
                             data={tableData}
                             onRefresh={handleRefresh}
+                            onSelectionChange={(rows) => setSelectedRows(rows as AssignmentRow[])}
+                            enableRowSelection={(row: AssignmentRow) =>
+                                (row.status === 'to_update' || row.status === 'manual') &&
+                                !!row.meetingId &&
+                                row.meetingId !== '-' &&
+                                !!row.found_instructor
+                            }
                             hideFilters={true}
                             hideUpload={true}
                             hideActions={true}
@@ -255,11 +281,50 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                 </div>
 
                 <DialogFooter className="mt-auto gap-2">
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isExecuting}>
                         Cancel
                     </Button>
-                    <Button>
-                        Execute
+                    <Button
+                        onClick={async () => {
+                            // Filtrar filas elegibles de las seleccionadas
+                            // Elegibles: 'to_update' o 'manual' (ambiguedad resuelta) con meetingId y instructor
+                            const eligibleMeetingIds = selectedRows
+                                .filter(row =>
+                                    (row.status === 'to_update' || row.status === 'manual') &&
+                                    row.meetingId &&
+                                    row.meetingId !== '-' &&
+                                    row.found_instructor
+                                )
+                                .map(row => row.meetingId!);
+
+                            if (eligibleMeetingIds.length === 0) {
+                                toast.error('No eligible meetings selected. Select meetings with "To Update" or resolved ambiguity.');
+                                return;
+                            }
+
+                            const result = await executeAssignments(eligibleMeetingIds);
+                            if (result.succeeded > 0) {
+                                toast.success(`${result.succeeded} meetings updated successfully`);
+                                // Refrescar datos en lugar de cerrar el modal
+                                await handleRefresh();
+                            }
+                            if (result.failed > 0) {
+                                toast.error(`${result.failed} meetings failed to update`);
+                            }
+                        }}
+                        disabled={isExecuting || selectedRows.filter(r => (r.status === 'to_update' || r.status === 'manual') && r.meetingId && r.meetingId !== '-' && r.found_instructor).length === 0}
+                    >
+                        {isExecuting ? (
+                            <>
+                                <Loader2 className="animate-spin" />
+                                Executing...
+                            </>
+                        ) : (
+                            (() => {
+                                const count = selectedRows.filter(r => (r.status === 'to_update' || r.status === 'manual') && r.meetingId && r.meetingId !== '-' && r.found_instructor).length;
+                                return count > 0 ? `Execute (${count})` : 'Execute';
+                            })()
+                        )}
                     </Button>
                 </DialogFooter>
             </DialogContent>

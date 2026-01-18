@@ -358,10 +358,26 @@ export const weakMatch: PenaltyFunction = (ctx) => {
                 } else {
                     // Diagnóstico integrado
                     const mismatchReason = hasPersonTitle ? 'TitleDetected' : (!isTopicFullyCovered ? 'NoCoverage' : 'NotSpecific');
+
+                    // Calcular puntos totales basado en si los tokens faltantes son numéricos
+                    let totalPoints = 0;
+                    const missingDetails: string[] = [];
+
+                    for (const token of missingTokens) {
+                        const isNumeric = /^\d+$/.test(token);
+                        if (isNumeric) {
+                            totalPoints += PENALTIES.MISSING_NUMERIC_TOKEN;
+                            missingDetails.push(`${token} (Num)`);
+                        } else {
+                            totalPoints += PENALTIES.MISSING_TOKEN;
+                            missingDetails.push(token);
+                        }
+                    }
+
                     return {
                         name: 'PARTIAL_MATCH_MISSING_TOKENS',
-                        points: PENALTIES.MISSING_TOKEN * missingTokens.length,
-                        reason: `Faltan tokens (Mismatch - ${mismatchReason}): ${missingTokens.join(', ')}`
+                        points: totalPoints,
+                        reason: `Faltan tokens (Mismatch - ${mismatchReason}): ${missingDetails.join(', ')}`
                     };
                 }
             }

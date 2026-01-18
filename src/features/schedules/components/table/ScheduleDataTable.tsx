@@ -34,6 +34,8 @@ interface ScheduleDataTableProps<TData, TValue> {
     onUploadClick?: () => void;
     onClearSchedule?: () => void;
     onRefresh?: () => void;
+    onSelectionChange?: (selectedRows: TData[]) => void;
+    enableRowSelection?: boolean | ((row: TData) => boolean);
     hideFilters?: boolean;
     hideUpload?: boolean;
     hideActions?: boolean;
@@ -108,6 +110,8 @@ export function ScheduleDataTable<TData, TValue>({
     const table = useReactTable({
         data: tableData,
         columns: resolvedColumns,
+        // Usar ID único por fila para row selection (recomendación oficial de TanStack)
+        getRowId: (row) => (row as { id?: string }).id || String(tableData.indexOf(row)),
         state: {
             sorting,
             columnVisibility,
@@ -120,7 +124,14 @@ export function ScheduleDataTable<TData, TValue>({
                 pageSize: 25,
             },
         },
-        enableRowSelection: true,
+        enableRowSelection: (() => {
+            const selectionProp = props.enableRowSelection;
+            if (selectionProp === undefined) return true;
+            if (typeof selectionProp === 'function') {
+                return (row: { original: TData }) => selectionProp(row.original);
+            }
+            return selectionProp;
+        })(),
         onRowSelectionChange: setRowSelection,
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
@@ -134,6 +145,56 @@ export function ScheduleDataTable<TData, TValue>({
         getFacetedUniqueValues: getFacetedUniqueValues(),
         autoResetPageIndex: false, // Mantener la página actual cuando los datos cambian
     });
+
+    // Guardar callback en ref para evitar re-ejecución por cambio de referencia
+    const onSelectionChangeRef = React.useRef(props.onSelectionChange);
+    onSelectionChangeRef.current = props.onSelectionChange;
+
+    // Notificar al padre cuando cambia la selección
+    React.useEffect(() => {
+        if (onSelectionChangeRef.current) {
+            const selectedIds = Object.keys(rowSelection).filter(k => rowSelection[k as keyof typeof rowSelection]);
+            const selectedRows = tableData.filter(row =>
+                selectedIds.includes((row as { id?: string }).id || '')
+            ) as TData[];
+            onSelectionChangeRef.current(selectedRows);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rowSelection]);
+
+    // Limpiar selecciones inválidas cuando tableData cambia
+    const enableRowSelectionRef = React.useRef(props.enableRowSelection);
+    enableRowSelectionRef.current = props.enableRowSelection;
+
+    React.useEffect(() => {
+        if (typeof enableRowSelectionRef.current !== 'function') return;
+        if (Object.keys(rowSelection).length === 0) return;
+
+        const selectionFn = enableRowSelectionRef.current;
+        let hasInvalidSelection = false;
+
+        for (const rowId of Object.keys(rowSelection)) {
+            if (!rowSelection[rowId as keyof typeof rowSelection]) continue;
+            const row = tableData.find(r => (r as { id?: string }).id === rowId);
+            if (!row || !selectionFn(row)) {
+                hasInvalidSelection = true;
+                break;
+            }
+        }
+
+        if (hasInvalidSelection) {
+            const newSelection: Record<string, boolean> = {};
+            for (const rowId of Object.keys(rowSelection)) {
+                if (!rowSelection[rowId as keyof typeof rowSelection]) continue;
+                const row = tableData.find(r => (r as { id?: string }).id === rowId);
+                if (row && selectionFn(row)) {
+                    newSelection[rowId] = true;
+                }
+            }
+            setRowSelection(newSelection);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tableData]);
 
     return (
         <div className="flex flex-col gap-4">

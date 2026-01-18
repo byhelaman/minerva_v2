@@ -70,7 +70,9 @@
             "title": "Automation",
             "desc": "Configure automated behaviors and safeguards.",
             "auto_save": "Auto Save",
-            "auto_save_desc": "Automatically save changes to local storage."
+            "auto_save_desc": "Automatically save changes to local storage.",
+            "clear_schedule_on_load": "Clear Schedule on Load",
+            "clear_schedule_on_load_desc": "Replace existing schedules when loading a new file."
         },
         "storage": {
             "title": "Storage & Export",

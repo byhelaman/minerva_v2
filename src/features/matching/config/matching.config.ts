@@ -19,13 +19,14 @@ export const PENALTIES = {
     STRUCTURAL_TOKEN_MISSING: -50,  // TRIO en query pero no en topic
     WEAK_MATCH: -80,                // No hay coincidencias distintivas (aumentado de -50)
     MISSING_TOKEN: -60,             // Falta un token distintivo individual (Aumentado para seguridad extrema)
+    MISSING_NUMERIC_TOKEN: -20,     // Falta un número suelto (Tratar como nivel implícito faltante, penalidad baja)
     MISSING_TOKEN_EXTRA_INFO: -10,  // Token extra información (si ya se cubrió el topic base >= 2 tokens)
     GROUP_NUMBER_CONFLICT: -80,     // CH 1 vs CH 3 (aumentado para rechazo estricto)
     NUMERIC_CONFLICT: -30,          // Números no coinciden
 
     // Leves (causan ambigüedad)
-    ORPHAN_NUMBER_WITH_SIBLINGS: -30, // Número en topic no en query + hay hermanos
-    ORPHAN_LEVEL_WITH_SIBLINGS: -30,  // Nivel en topic no en query + hay hermanos
+    ORPHAN_NUMBER_WITH_SIBLINGS: -60, // Número en topic no en query + hay hermanos (AUMENTADO para evitar asignar general a específico)
+    ORPHAN_LEVEL_WITH_SIBLINGS: -60,  // Nivel en topic no en query + hay hermanos (AUMENTADO para evitar asignar general a específico)
 } as const;
 
 // ============================================================================

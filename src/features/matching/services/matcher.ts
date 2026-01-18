@@ -218,7 +218,7 @@ export class MatchingService {
         }
 
         if (candidates.length === 0) {
-            const queryTokens = new Set(programNormalized.split(" ").filter(t => t.length > 2));
+            const queryTokens = new Set(programNormalized.split(" ").filter(t => t.length >= 2));
 
             candidates = this.meetings.filter(m => {
                 const topicTokens = normalizeString(m.topic).split(" ");

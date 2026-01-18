@@ -101,13 +101,41 @@ export function ScheduleDashboard() {
     }, [schedules, settings.autoSave]);
 
     const handleUploadComplete = (newData: Schedule[]) => {
-        // Calculamos los duplicados usando el estado actual 'schedules'
+        // Paso 1: Deduplicar internamente los datos nuevos (entre archivos subidos)
+        const internalKeys = new Set<string>();
+        const deduplicatedNewData: Schedule[] = [];
+        let internalDuplicates = 0;
+
+        for (const schedule of newData) {
+            const key = getUniqueScheduleKey(schedule);
+            if (!internalKeys.has(key)) {
+                internalKeys.add(key);
+                deduplicatedNewData.push(schedule);
+            } else {
+                internalDuplicates++;
+            }
+        }
+
+        // Si clearScheduleOnLoad está activado, reemplazar todo (con datos ya deduplicados)
+        if (settings.clearScheduleOnLoad) {
+            setSchedules(deduplicatedNewData);
+            const msg = internalDuplicates > 0
+                ? `Loaded ${deduplicatedNewData.length} schedules (${internalDuplicates} internal duplicates removed)`
+                : `Loaded ${deduplicatedNewData.length} schedules`;
+            console.log(msg);
+            toast.success(msg);
+            return;
+        }
+
+        // Paso 2: Comportamiento por defecto - merge con deduplicación contra existentes
         const existingKeys = new Set(schedules.map((s) => getUniqueScheduleKey(s)));
 
-        // Filtrar nuevos items que ya existen
-        const uniqueNewData = newData.filter(
+        // Filtrar items que ya existen en el estado actual
+        const uniqueNewData = deduplicatedNewData.filter(
             (s) => !existingKeys.has(getUniqueScheduleKey(s))
         );
+
+        const totalDuplicates = internalDuplicates + (deduplicatedNewData.length - uniqueNewData.length);
 
         if (uniqueNewData.length === 0) {
             toast.info("No new schedules added (all duplicates)");
@@ -115,7 +143,7 @@ export function ScheduleDashboard() {
         }
 
         setSchedules((prev) => [...prev, ...uniqueNewData]);
-        console.log(`Added ${uniqueNewData.length} new schedules, ignored ${newData.length - uniqueNewData.length} duplicates`);
+        console.log(`Added ${uniqueNewData.length} new schedules, ignored ${totalDuplicates} duplicates`);
         toast.success(`Added ${uniqueNewData.length} new schedules`);
     };
 

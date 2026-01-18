@@ -526,7 +526,8 @@ export function DocsPage() {
                                     <div className="space-y-1">
                                         <p className="font-medium">Automation</p>
                                         <p className="text-muted-foreground">
-                                            Enable Auto Save to automatically save changes locally.
+                                            Enable Auto Save to save changes locally. Enable "Clear Schedule on Load" to replace
+                                            existing schedules when uploading new files (instead of merging).
                                         </p>
                                     </div>
 

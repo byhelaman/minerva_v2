@@ -68,10 +68,13 @@ Base Score: 100
     ├── LEVEL_CONFLICT           (-100) → L3 buscado pero topic tiene L5
     ├── WEAK_MATCH               (-80)  → Ningún token distintivo coincide
     ├── PROGRAM_VS_PERSON        (-80)  → Query es programa, topic es persona
-    ├── MISSING_TOKEN            (-60)  → Falta token importante
-    ├── STRUCTURAL_TOKEN_MISSING (-50)  → Falta TRIO/CH/DUO
     ├── GROUP_NUMBER_CONFLICT    (-80)  → CH 1 vs CH 3
-    └── ORPHAN_LEVEL/NUMBER      (-30)  → Hay hermanos sin especificar
+    ├── MISSING_TOKEN            (-60)  → Falta token importante (no numérico)
+    ├── MISSING_NUMERIC_TOKEN    (-20)  → Falta número suelto (tolerante)
+    ├── ORPHAN_LEVEL_WITH_SIBLINGS (-60) → Topic tiene nivel no solicitado
+    ├── ORPHAN_NUMBER_WITH_SIBLINGS(-60) → Topic tiene número no solicitado
+    ├── STRUCTURAL_TOKEN_MISSING (-50)  → Falta TRIO/CH/DUO
+    └── MISSING_TOKEN_EXTRA_INFO (-10)  → Token extra cuando topic cubierto
 ```
 
 ### Paso 4: Decisión Final
@@ -162,8 +165,13 @@ Configura umbrales y tipos de programa:
 export const PENALTIES = {
   CRITICAL_TOKEN_MISMATCH: -100,
   LEVEL_CONFLICT: -100,
+  WEAK_MATCH: -80,
+  GROUP_NUMBER_CONFLICT: -80,
   MISSING_TOKEN: -60,
-  MISSING_TOKEN_EXTRA_INFO: -10,  // Cuando heurística persona activa
+  MISSING_NUMERIC_TOKEN: -20,    // Números sueltos faltantes (tolerante)
+  ORPHAN_LEVEL_WITH_SIBLINGS: -60,  // Nivel extra en topic
+  ORPHAN_NUMBER_WITH_SIBLINGS: -60, // Número extra en topic
+  MISSING_TOKEN_EXTRA_INFO: -10,
   // ...
 };
 

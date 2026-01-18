@@ -24,6 +24,7 @@ export interface AssignmentRow extends Schedule {
     matchedCandidate?: ZoomMeetingCandidate; // Assigned meeting details
     ambiguousCandidates?: ZoomMeetingCandidate[]; // List of ambiguous options
     manualMode?: boolean; // Habilita edición manual de checkbox e instructor
+    found_instructor?: { id: string; email: string; display_name: string }; // Instructor encontrado en Zoom
 }
 
 // Modificado para aceptar lista dinámica de instructores, mapa de hosts, y callbacks
@@ -55,16 +56,16 @@ export const getAssignmentColumns = (
                 </div>
             ),
             cell: ({ row }) => {
-                const isAssigned = row.original.status === 'assigned';
-                const isManualMode = row.original.manualMode === true;
+                // Usar getCanSelect() para consistencia con enableRowSelection de la tabla
+                const canSelect = row.getCanSelect();
                 return (
-                    <div className="flex justify-center">
+                    <div className={`flex justify-center ${!canSelect ? 'cursor-not-allowed' : ''}`}>
                         <Checkbox
                             checked={row.getIsSelected()}
                             onCheckedChange={(value) => row.toggleSelected(!!value)}
-                            disabled={isAssigned && !isManualMode}
+                            disabled={!canSelect}
                             aria-label="Select row"
-                            className="translate-y-[2px] mb-1"
+                            className={`translate-y-[2px] mb-1 ${!canSelect ? 'opacity-50' : ''}`}
                         />
                     </div>
                 );

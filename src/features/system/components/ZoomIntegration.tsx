@@ -83,8 +83,12 @@ export function ZoomIntegration() {
             const startTime = Date.now();
             const POLL_INTERVAL = 2000; // 2s
             const TIMEOUT = 180000; // 3 min
+            let connectionHandled = false; // Flag para evitar toast duplicado
 
             const timer = setInterval(async () => {
+                // Si ya manejamos la conexión, no hacer nada
+                if (connectionHandled) return;
+
                 if (Date.now() - startTime > TIMEOUT) {
                     clearInterval(timer);
                     setIsConnecting(false);
@@ -102,7 +106,8 @@ export function ZoomIntegration() {
                         // Verificación de error crítico si es necesario
                     }
 
-                    if (statusData?.connected) {
+                    if (statusData?.connected && !connectionHandled) {
+                        connectionHandled = true; // Marcar como manejado ANTES de cualquier acción
                         clearInterval(timer);
                         setAccount(statusData.account);
                         setIsConnecting(false);

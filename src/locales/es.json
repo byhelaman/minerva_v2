@@ -70,7 +70,9 @@
             "title": "Automatización",
             "desc": "Configura comportamientos automáticos y medidas de seguridad.",
             "auto_save": "Guardado Automático",
-            "auto_save_desc": "Guardar cambios automáticamente en el almacenamiento local."
+            "auto_save_desc": "Guardar cambios automáticamente en el almacenamiento local.",
+            "clear_schedule_on_load": "Limpiar horario al cargar",
+            "clear_schedule_on_load_desc": "Reemplazar horarios existentes al cargar un nuevo archivo."
         },
         "storage": {
             "title": "Almacenamiento y Exportación",
