@@ -4,6 +4,7 @@ import { normalizeString } from '../utils/normalizer';
 import { evaluateMatch } from '../scoring/scorer';
 import { clearLevenshteinCache } from '../scoring/penalties';
 import { THRESHOLDS } from '../config/matching.config';
+import type { MatchOptions } from '../scoring/types';
 
 export interface ZoomMeetingCandidate {
     meeting_id: string;
@@ -165,7 +166,7 @@ export class MatchingService {
      * Encontrar mejores coincidencias para un solo horario usando Sistema de Scoring
      * (HMR Trigger: v2)
      */
-    public findMatch(schedule: Schedule): MatchResult {
+    public findMatch(schedule: Schedule, options?: MatchOptions): MatchResult {
         const result: MatchResult = {
             schedule,
             status: 'not_found',
@@ -259,7 +260,7 @@ export class MatchingService {
             return result;
         }
 
-        const evaluation = evaluateMatch(schedule.program, candidates);
+        const evaluation = evaluateMatch(schedule.program, candidates, options);
 
         if (evaluation.decision === 'not_found') {
             result.status = 'not_found';
@@ -322,7 +323,7 @@ export class MatchingService {
      * Buscar coincidencia solo por tema (sin validación de instructor).
      * Usado para CreateLinkModal donde solo queremos verificar si existe una reunión.
      */
-    public findMatchByTopic(topic: string): MatchResult {
+    public findMatchByTopic(topic: string, options?: MatchOptions): MatchResult {
         // Crear un horario falso con solo el programa
         const fakeSchedule = { program: topic, instructor: '' } as any;
 
@@ -346,7 +347,7 @@ export class MatchingService {
         }
 
         // Evaluar candidatos - evaluateMatch espera string rawProgram
-        const evaluation = evaluateMatch(topic, candidates);
+        const evaluation = evaluateMatch(topic, candidates, options);
 
         if (evaluation.decision === 'not_found') {
             result.reason = evaluation.reason;

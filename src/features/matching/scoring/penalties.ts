@@ -12,13 +12,32 @@ import {
     PERSON_FORMAT_PATTERNS,
 } from '../config/matching.config';
 import { normalizeString } from '../utils/normalizer';
+import irrelevantWordsConfig from '../config/irrelevant-words.json';
+
+// Construir Set de palabras irrelevantes para búsqueda rápida O(1)
+const IRRELEVANT_TOKENS = new Set<string>();
+Object.values(irrelevantWordsConfig.categories).forEach(cat => {
+    cat.forEach(word => IRRELEVANT_TOKENS.add(word.toLowerCase()));
+});
+// También agregamos "group", "grupo" que son estructurales comunes
+IRRELEVANT_TOKENS.add('group');
+IRRELEVANT_TOKENS.add('grupo');
+
+const IGNORED_COMPANY_TOKENS = new Set([
+    ...STRUCTURAL_TOKENS,
+    ...PROGRAM_TYPES,
+    'online', 'hibrido', 'eng', 'advanced', 'master', 'intermediate',
+    'beginner', 'presencial', 'remoto', 'virtual', 'zoom', 'clase',
+    'grupo', 'group', 'level', 'nivel', 'basic', 'upper', 'b1', 'b2', 'c1', 'c2',
+    'manual', 'qa', 'automation', 'java', 'python', 'javascript', 'react', 'node'
+]);
 
 // ============================================================================
 // UTILIDADES COMUNES
 // ============================================================================
 
 const tokenize = (str: string): string[] =>
-    (str || '').toLowerCase().split(/\W+/).filter(t => t.length > 0);
+    normalizeString(str).split(' ').filter(t => t.length > 0);
 
 const tokenizeDistinctive = (str: string): string[] => {
     // Usar normalizeString para eliminar acentos y caracteres especiales consistentes con el resto del sistema
@@ -123,6 +142,15 @@ export const levelConflict: PenaltyFunction = (ctx) => {
     if (qLevels.size > 0 && tLevels.size > 0) {
         const overlap = [...qLevels].some(l => tLevels.has(l));
         if (!overlap) {
+            // Verificar si debemos ignorar conflictos de nivel (para detección de duplicados)
+            if (ctx.options?.ignoreLevelMismatch) {
+                return {
+                    name: 'LEVEL_MISMATCH_IGNORED',
+                    points: PENALTIES.LEVEL_MISMATCH_IGNORED,
+                    reason: `Ignorado: L${[...qLevels].join('/')} vs L${[...tLevels].join('/')}`
+                };
+            }
+
             return {
                 name: 'LEVEL_CONFLICT',
                 points: PENALTIES.LEVEL_CONFLICT,
@@ -143,15 +171,24 @@ export const levelConflict: PenaltyFunction = (ctx) => {
  */
 export const programVsPerson: PenaltyFunction = (ctx) => {
     const qTokens = new Set(tokenize(ctx.rawProgram));
+    const tTokens = new Set(tokenize(ctx.rawTopic));
     const queryIsProgram = [...PROGRAM_TYPES].some(t => qTokens.has(t));
 
     if (queryIsProgram) {
         const isPersonFormat = PERSON_FORMAT_PATTERNS.some(p => p.test(ctx.rawTopic));
         if (isPersonFormat) {
-            // Excepción: Si la query tiene BVP/BVS (Privado) o BVD (Duo), estos prefijos
+            // Excepción 1: Si el topic TAMBIÉN tiene tokens de programa (TRIO, DUO, CH, etc.),
+            // entonces no es una persona, es un programa con formato similar.
+            // Ej: "TRIO GRUPO A - L3" matchea regex de persona pero es programa.
+            const topicIsAlsoProgram = [...PROGRAM_TYPES].some(t => tTokens.has(t)) ||
+                [...STRUCTURAL_TOKENS].some(t => tTokens.has(t));
+            if (topicIsAlsoProgram) {
+                return null; // No penalizar - ambos son programas
+            }
+
+            // Excepción 2: Si la query tiene BVP/BVS (Privado) o BVD (Duo), estos prefijos
             // denotan clases con alumnos específicos (1 a 1 o parejas), lo que implica
             // una asignación a NOMBRES DE PERSONAS en lugar de un programa genérico.
-            // solo aparece el nombre de la persona. En ambos casos, es un match válido.
             // Por lo tanto, no debemos penalizar como conflicto "Programa vs Persona".
             const hasBvPrefix = qTokens.has('bvp') || qTokens.has('bvd') || qTokens.has('bvs');
             if (hasBvPrefix) {
@@ -173,6 +210,10 @@ export const programVsPerson: PenaltyFunction = (ctx) => {
  * Token estructural (TRIO/CH/DUO) en query pero no en topic
  */
 export const structuralTokenMissing: PenaltyFunction = (ctx) => {
+    // Si estamos en modo relajado (buscando duplicados), ignoramos tokens estructurales faltantes
+    // (ej: query tiene 'KIDS' pero topic no)
+    if (ctx.options?.ignoreLevelMismatch) return null;
+
     const qTokens = new Set(tokenize(ctx.rawProgram));
     const tTokens = new Set(tokenize(ctx.rawTopic));
 
@@ -301,6 +342,7 @@ function calculateTokenCoverage(queryTokens: string[], topicTokens: string[]): {
     isFullyCovered: boolean;
     isSpecific: boolean;
     matchedCount: number;
+    coverage: number;
 } {
     let matchedCount = 0;
 
@@ -310,10 +352,13 @@ function calculateTokenCoverage(queryTokens: string[], topicTokens: string[]): {
         }
     }
 
+    const total = topicTokens.length;
+
     return {
-        isFullyCovered: matchedCount >= topicTokens.length,
-        isSpecific: topicTokens.length >= 1,
+        isFullyCovered: matchedCount >= total,
+        isSpecific: total >= 1,
         matchedCount,
+        coverage: total > 0 ? matchedCount / total : 0
     };
 }
 
@@ -356,7 +401,8 @@ function applyMissingTokenPenalty(
     totalQueryTokens: number,
     allowExtraInfo: boolean,
     hasPersonTitle: boolean,
-    isTopicCovered: boolean
+    isTopicCovered: boolean,
+    isRelaxedMode: boolean = false
 ): { name: string; points: number; reason: string } | null {
     if (missingTokens.length === 0) return null;
 
@@ -371,10 +417,29 @@ function applyMissingTokenPenalty(
 
     // Caso 2: Penalización leve por info extra (topic cubierto)
     if (allowExtraInfo) {
+        // En modo relajado, distinguimos entre "Ruido" y "Info Importante"
+        let totalPoints = 0;
+        const details: string[] = [];
+
+        for (const token of missingTokens) {
+            let penalty: number = PENALTIES.MISSING_TOKEN_EXTRA_INFO; // Default legacy (-10)
+
+            if (isRelaxedMode) {
+                // Si es modo relajado:
+                // - Ruido (TIME, ZONE, KIDS): -2
+                // - Importante (Nombres, Apellidos): -15 (Para diferenciar Diana vs Luis)
+                const isNoise = IRRELEVANT_TOKENS.has(token.toLowerCase());
+                penalty = isNoise ? -2 : -15;
+            }
+
+            totalPoints += penalty;
+            details.push(`${token}(${penalty})`);
+        }
+
         return {
             name: 'PARTIAL_MATCH_MISSING_TOKENS',
-            points: PENALTIES.MISSING_TOKEN_EXTRA_INFO * missingTokens.length,
-            reason: `Faltan tokens (Info Extra): ${missingTokens.join(', ')}`
+            points: totalPoints,
+            reason: `Faltan tokens (Info Extra): ${details.join(', ')}`
         };
     }
 
@@ -425,12 +490,33 @@ export const weakMatch: PenaltyFunction = (ctx) => {
     const personFormat = detectPersonFormat(ctx.rawProgram, ctx.rawTopic);
 
     // 3. Determinar si se permite info extra
+    // Solo relajamos cobertura si hay suficientes tokens en la query (> 1) para evitar falsos positivos
+    // en queries cortas genéricas ej: "WORKSHOP" (1 token) vs "Workshop/Training" (2 tokens) -> 0.5 coverage
+    const isRelaxedMode = !!ctx.options?.ignoreLevelMismatch && distinctiveQueryTokens.length > 1;
+    const minCoverage = isRelaxedMode ? 0.4 : 0.66; // 0.66 hardcoded from config value usually
+
     const allowExtraInfo =
         (coverage.isFullyCovered && coverage.isSpecific && !personFormat.hasPersonTitle) ||
-        (personFormat.bothArePeople && coverage.isFullyCovered);
+        (personFormat.bothArePeople && coverage.isFullyCovered) ||
+        (isRelaxedMode && coverage.coverage >= minCoverage); // Modo relax permite basura extra si cumple mínimo
+
+    if (coverage.coverage < minCoverage) {
+        return {
+            name: 'WEAK_MATCH',
+            points: PENALTIES.WEAK_MATCH,
+            reason: `Cobertura insuficiente (${Math.round(coverage.coverage * 100)}% < ${Math.round(minCoverage * 100)}%)`
+        };
+    }
 
     // 4. Encontrar tokens faltantes
-    const missingTokens = findMissingTokens(distinctiveQueryTokens, topicTokens);
+    let missingTokens = findMissingTokens(distinctiveQueryTokens, topicTokens);
+
+    // Si ignoramos mismatch de nivel, no penalizar si el token faltante es un nivel (L#)
+    if (ctx.options?.ignoreLevelMismatch) {
+        // Regex para tokens de nivel ej "l7", "l12"
+        const levelTokenRegex = /^l\d+$/i;
+        missingTokens = missingTokens.filter(t => !levelTokenRegex.test(t));
+    }
 
     // 5. Aplicar penalización
     return applyMissingTokenPenalty(
@@ -438,7 +524,8 @@ export const weakMatch: PenaltyFunction = (ctx) => {
         distinctiveQueryTokens.length,
         allowExtraInfo,
         personFormat.hasPersonTitle,
-        coverage.isFullyCovered
+        coverage.isFullyCovered,
+        isRelaxedMode
     );
 };
 
@@ -446,6 +533,9 @@ export const weakMatch: PenaltyFunction = (ctx) => {
  * Conflicto de número de grupo (CH 1 vs CH 3)
  */
 export const groupNumberConflict: PenaltyFunction = (ctx) => {
+    // Si buscamos duplicados, ignorar conflicto de grupo (ej: cambio de G1 a G3)
+    if (ctx.options?.ignoreLevelMismatch) return null;
+
     const qGroupNums = extractNonLevelNumbers(ctx.rawProgram);
     const tGroupNums = extractNonLevelNumbers(ctx.rawTopic);
 
@@ -475,6 +565,10 @@ export const numericConflict: PenaltyFunction = (ctx) => {
     const tNums = new Set(extractNumbers(ctx.rawTopic));
 
     if (qNums.size > 0 && tNums.size > 0) {
+        // Si ignoramos nivel, asumimos que los conflictos numéricos pueden derivar de ahí
+        // y confiamos en la validación por nombre/topic
+        if (ctx.options?.ignoreLevelMismatch) return null;
+
         const overlap = [...qNums].some(n => tNums.has(n));
         if (!overlap) {
             return {
@@ -555,6 +649,83 @@ export const orphanLevelWithSiblings: PenaltyFunction = (ctx) => {
     return null;
 };
 
+/**
+ * Conflicto de Compañía (Scotiabank vs Hayduk)
+ * Detecta si la query empieza con una compañía explícita y el topic tiene otra diferente entre paréntesis.
+ */
+export const companyConflict: PenaltyFunction = (ctx) => {
+    // 1. Detectar posible compañía en la Query (primer token significativo en mayúsculas)
+    const queryTokens = tokenize(ctx.rawProgram);
+    let queryCompany: string | null = null;
+
+    for (const token of queryTokens) {
+        if (token.length > 2 && !IGNORED_COMPANY_TOKENS.has(token) && !/^\d+$/.test(token)) {
+            queryCompany = token;
+            break; // Tomamos solo el primero como candidato principal
+        }
+    }
+
+    if (!queryCompany) return null;
+
+    // 2. Detectar compañías en el Topic (dentro de paréntesis)
+    // Buscamos contenido dentro de paréntesis: (HAYDUK), (SCOTIABANK), (ONLINE)
+    const topicCompanyMatches = [...ctx.rawTopic.matchAll(/\(([^)]+)\)/g)];
+    const topicCompanies: string[] = [];
+
+    for (const match of topicCompanyMatches) {
+        const content = match[1]; // contenido sin paréntesis
+        const tokens = tokenize(content);
+        // Filtrar tokens ignorados (ONLINE, HIBRIDO, etc.)
+        const validTokens = tokens.filter(t =>
+            t.length > 2 &&
+            !IGNORED_COMPANY_TOKENS.has(t) &&
+            !/^\d+$/.test(t)
+        );
+        topicCompanies.push(...validTokens);
+    }
+
+    if (topicCompanies.length === 0) return null;
+
+    // 3. Verificar si hay conflicto
+    // Si la compañía de la query NO está en las compañías del topic
+    const hasMatch = topicCompanies.some(tc => {
+        // Coincidencia exacta o fuzzy cercano
+        return tc === queryCompany || levenshtein(tc, queryCompany!) <= 2;
+    });
+
+    if (!hasMatch) {
+        // SAFETY CHECK: Validar si la "compañía" detectada en la query es en realidad parte del NOMBRE de la persona
+        // Ej: Query "ESPINOZA" vs Topic "JUAN ESPINOZA (REPSOL)"
+        // "ESPINOZA" != "REPSOL", pero "ESPINOZA" está en "JUAN ESPINOZA".
+
+        // Remover contenido entre paréntesis para aislar el nombre
+        const topicNamePart = ctx.rawTopic.replace(/\([^)]+\)/g, '');
+        const topicNameTokens = tokenize(topicNamePart);
+
+        // Verificar si el candidato a compañía está en el nombre
+        const isPartOfName = topicNameTokens.some(t =>
+            t === queryCompany || (t.length > 3 && levenshtein(t, queryCompany!) <= 1)
+        );
+
+        if (isPartOfName) {
+            return null; // Es un nombre, no un conflicto de compañía
+        }
+
+        // Verificar excepciones:
+        // Si la query es SOLO la compañía (ej: "SCOTIABANK"), el mismatch es crítico.
+        // Si la query tiene más cosas, asegurarnos que queryCompany no sea parte del nombre de la persona (riesgo de falso positivo)
+        // Pero asumimos que las compañías en Topic están en paréntesis y nombres no.
+
+        return {
+            name: 'COMPANY_CONFLICT',
+            points: PENALTIES.COMPANY_CONFLICT,
+            reason: `Compañía query '${queryCompany?.toUpperCase()}' vs topic '${topicCompanies.join(', ').toUpperCase()}'`
+        };
+    }
+
+    return null;
+};
+
 // ============================================================================
 // REGISTRO DE TODAS LAS PENALIZACIONES (en orden de evaluación)
 // ============================================================================
@@ -562,6 +733,7 @@ export const orphanLevelWithSiblings: PenaltyFunction = (ctx) => {
 export const ALL_PENALTIES: PenaltyFunction[] = [
     criticalTokenMismatch,
     levelConflict,
+    companyConflict,
     programVsPerson,
     structuralTokenMissing,
     weakMatch,

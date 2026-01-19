@@ -1,6 +1,6 @@
-
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MatchingService, ZoomMeetingCandidate } from '../src/features/matching/services/matcher';
+import { scoreCandidate } from '../src/features/matching/scoring/scorer';
 
 const mockMeetings: ZoomMeetingCandidate[] = [
     { meeting_id: 'm1', topic: 'BVP - JUAN ALBERTO RIVERA - L9 (ONLINE)', host_id: 'h1', start_time: '2023-01-01' },
@@ -117,7 +117,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'DUO TECHCORP L4 (ONLINE)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined();
-        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility // Debe ser not_found por el guardrail
+        expect(result.status).toBe('not_found'); // Critical conflict -> not_found
     });
 
     // debe hacer matching
@@ -154,7 +154,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'TRIO GLOBALTECH N8 (PRESENCIAL-TRAVEL)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined(); // No matchea porque CH != TRIO
-        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
+        expect(result.status).toBe('not_found'); // CH vs TRIO -> not_found
     });
 
     // Este test sigue siendo válido - Level Mismatch (L3 vs L2) sigue activo
@@ -196,6 +196,201 @@ describe('MatchingService - Meetings', () => {
         // No debe matchear porque "globex" no está en el topic
         // Debe ser "ambiguous" con score muy bajo o "not_found"
         expect(result.meeting_id).toBeUndefined();
+    });
+
+    // Test para opción ignoreLevelMismatch (Create Link workflow)
+    it('should match topic with DIFFERENT level if ignoreLevelMismatch is true', () => {
+        const meetings = [
+            ...mockMeetings,
+            { meeting_id: 'l7_match', topic: 'BVP - AIDA CALDERON - L7 (ONLINE)', host_id: 'h1', start_time: '2023-01-01' }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        // Query pide L8, Topic tiene L7
+        const result = testMatcher.findMatchByTopic('BVP - AIDA CALDERON - L8 (ONLINE)', { ignoreLevelMismatch: true });
+
+        // Debe encontrarlo y asignarlo (Score ~90)
+        expect(result.status).toBe('assigned');
+        expect(result.meeting_id).toBe('l7_match');
+        expect(result.score).toBeGreaterThan(80);
+    });
+
+    // Test para comportamiento estricto por defecto (Assign Link workflow)
+    it('should NOT match topic with DIFFERENT level by default (strict mode)', () => {
+        const meetings = [
+            ...mockMeetings,
+            { meeting_id: 'l7_match_strict', topic: 'BVP - AIDA CALDERON - L7 (ONLINE)', host_id: 'h1', start_time: '2023-01-01' }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        // Query pide L8, Topic tiene L7 - Sin opciones extra
+        const result = testMatcher.findMatchByTopic('BVP - AIDA CALDERON - L8 (ONLINE)');
+
+        // Debe ser rechazado por conflicto de nivel (not_found o ambiguous, pero NO assigned)
+        expect(result.status).not.toBe('assigned');
+        expect(result.meeting_id).toBeUndefined();
+    });
+
+    // Test caso específico usuario: NIVELACION vs TIME ZONE
+    it('should match user case: NIVELACION TEAM ZONE 1 vs TIME ZONE 3 with ignoreLevelMismatch', () => {
+        const meetings = [
+            ...mockMeetings,
+            {
+                meeting_id: 'luis_match',
+                topic: 'LUIS VELASQUEZ DEL AGUILA NIVELACION TEAM ZONE 1 (ONLINE)',
+                host_id: 'h1',
+                start_time: '2023-01-01'
+            }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        // Query diferente estructura y número
+        const result = testMatcher.findMatchByTopic(
+            'BVP KIDS - LUIS VELASQUEZ DEL AGUILA - TIME ZONE 3 (ONLINE)',
+            { ignoreLevelMismatch: true }
+        );
+
+        // Con solo 1 candidato, debería asignar.
+        expect(result.status).toBe('assigned');
+        expect(result.meeting_id).toBe('luis_match');
+    });
+
+    // Test caso TRIO: cambio de nivel L3 -> L4
+    it('should match TRIO GRUPO A with level change L3->L4 when ignoreLevelMismatch is true', () => {
+        const meetings = [
+            ...mockMeetings,
+            {
+                meeting_id: 'trio_match',
+                topic: 'TRIO GRUPO A - L3 (TRAMARSA)(ONLINE)',
+                host_id: 'h1',
+                start_time: '2023-01-01'
+            }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        const result = testMatcher.findMatchByTopic(
+            'TRIO GRUPO A - L4 (TRAMARSA)(ONLINE)',
+            { ignoreLevelMismatch: true }
+        );
+
+        console.log('TRIO Test:', result.status, result.meeting_id, result.score);
+
+        // Debería asignar porque solo cambia el nivel
+        expect(result.status).toBe('assigned');
+        expect(result.meeting_id).toBe('trio_match');
+    });
+
+    it('should be AMBIGUOUS if multiple duplicates found for Luis Velasquez', () => {
+        const meetings = [
+            ...mockMeetings,
+            {
+                meeting_id: 'luis_1',
+                topic: 'LUIS VELASQUEZ DEL AGUILA NIVELACION TEAM ZONE 1 (ONLINE)',
+                host_id: 'h1', start_time: '2023-01-01'
+            },
+            {
+                meeting_id: 'luis_2',
+                topic: 'LUIS VELASQUEZ DEL AGUILA - OLD MEETING (ONLINE)',
+                host_id: 'h1', start_time: '2022-01-01'
+            }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        const result = testMatcher.findMatchByTopic(
+            'BVP KIDS - LUIS VELASQUEZ DEL AGUILA - TIME ZONE 3 (ONLINE)',
+            { ignoreLevelMismatch: true }
+        );
+
+        // Debe ser ambiguo porque hay 2 opciones buenas
+        expect(result.status).toBe('ambiguous');
+        // Pero el mejor match debe estar presente
+        expect(result.ambiguousCandidates).toBeDefined();
+        // Verificar que luis_1 o luis_2 están en top
+        expect([result.bestMatch?.meeting_id]).toContain('luis_1');
+    });
+
+    it('should preferentially match Luis over Diana (Name Mismatch Penalty)', () => {
+        const meetings = [
+            ...mockMeetings,
+            {
+                meeting_id: 'luis',
+                topic: 'LUIS VELASQUEZ DEL AGUILA NIVELACION TEAM ZONE 1 (ONLINE)',
+                host_id: 'h1', start_time: '2023-01-01'
+            },
+            {
+                meeting_id: 'diana',
+                topic: 'BVP - DIANA DEL AGUILA - L5 ( BECA ONLINE)',
+                host_id: 'h1', start_time: '2023-01-01'
+            }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        const result = testMatcher.findMatchByTopic(
+            'BVP KIDS - LUIS VELASQUEZ DEL AGUILA - TIME ZONE 3 (ONLINE)',
+            { ignoreLevelMismatch: true }
+        );
+
+        // Diana debería tener penalización fuerte por faltar "LUIS" y "VELASQUEZ"
+        // Luis debería tener penalización leve por faltar "TIME" "ZONE"
+        // Diferencia > AMBIGUITY_DIFF (20) -> Assign Luis
+        expect(result.status).toBe('assigned');
+        expect(result.meeting_id).toBe('luis');
+    });
+
+    // Test caso WORKSHOP: Debe ser ambiguo porque hay múltiples workshops
+    it('should be AMBIGUOUS for generic "WORKSHOP" query with multiple candidates', () => {
+        const meetings = [
+            ...mockMeetings,
+            { meeting_id: 'w1', topic: '[WORKSHOP] Club Intermedio + Avanzado', host_id: 'h1', start_time: '2023-01-01' },
+            { meeting_id: 'w2', topic: 'Workshop/Training', host_id: 'h1', start_time: '2023-01-01' },
+            { meeting_id: 'w3', topic: '[WORKSHOP] Club Basic', host_id: 'h1', start_time: '2023-01-01' },
+            { meeting_id: 'w4', topic: 'WORKSHOP UPER INTERMEDIO (AFP INTEGRA)', host_id: 'h1', start_time: '2023-01-01' }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        // Query genérica "WORKSHOP" con ignoreLevelMismatch (como usa el modal)
+        const result = testMatcher.findMatchByTopic('WORKSHOP', { ignoreLevelMismatch: true });
+
+        console.log('Workshop Ambiguity Test:', {
+            status: result.status,
+            meeting_id: result.meeting_id,
+            score: result.score,
+            reason: result.reason,
+            candidates: result.candidates?.length
+        });
+        // Debe ser ambiguo o not_found, PERO NO assigned
+        expect(result.status).not.toBe('assigned');
+        // Idealmente ambiguous
+        if (result.status !== 'not_found') {
+            expect(result.status).toBe('ambiguous');
+        }
+    });
+
+    // Test caso "WORKSHOP" vs "Workshop/Training" (Candidato único)
+    it('should NOT match generic "WORKSHOP" vs "Workshop/Training" (Single Candidate)', () => {
+        const meetings = [
+            ...mockMeetings,
+            { meeting_id: 'w2', topic: 'Workshop/Training', host_id: 'h1', start_time: '2023-01-01' }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        const result = testMatcher.findMatchByTopic('WORKSHOP', { ignoreLevelMismatch: true });
+        // Debe rechazar por score bajo (Weak Match, 50% coverage)
+        expect(result.status).not.toBe('assigned');
+    });
+
+    // Test caso "WORKSHOP" exacto
+    it('should assign exact match "WORKSHOP"', () => {
+        const meetings = [
+            ...mockMeetings,
+            { meeting_id: 'w_exact', topic: 'WORKSHOP', host_id: 'h1', start_time: '2023-01-01' }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        const result = testMatcher.findMatchByTopic('WORKSHOP', { ignoreLevelMismatch: true });
+        // Debe asignar 100%
+        expect(result.status).toBe('assigned');
+        expect(result.score).toBeGreaterThan(90);
     });
 
 });
@@ -340,12 +535,7 @@ describe('MatchingService - Query without BVP prefix', () => {
         const schedule = { program: 'BVP - HECTOR RAFAEL MAIDANA - L5 (ONLINE)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
 
-        console.log('Test 1 Result:', {
-            status: result.status,
-            meeting_id: result.meeting_id,
-            reason: result.reason,
-            candidates: result.candidates?.length
-        });
+        console.log('HECTOR Test:', result.status, result.meeting_id, result.score);
 
         expect(result.meeting_id).toBe('bvp1');
     });
@@ -376,5 +566,97 @@ describe('MatchingService - Query without BVP prefix', () => {
         });
 
         expect(result.meeting_id).toBe('bvp3');
+    });
+});
+
+describe('MatchingService - Scotiabank vs Person', () => {
+    it('should NOT match SCOTIABANK vs HAYDUK (different companies)', () => {
+        const haydukMeeting: ZoomMeetingCandidate = {
+            meeting_id: 'hayduk1',
+            topic: 'LUIS ENRIQUE GONZALEZ ESPEJO (HAYDUK)(ONLINE) - ENG L3',
+            host_id: 'h1',
+            start_time: '2023-01-01'
+        };
+        const matcher = new MatchingService([haydukMeeting], []);
+
+        // Test Case 1: Automatic Assignment (Strict)
+        // strict mode should return no match or very low score
+        const resultStrict = matcher.findMatchByTopic('SCOTIABANK O - ENG L3');
+        console.log('Scotiabank Strict:', {
+            status: resultStrict.status,
+            score: resultStrict.score,
+            reason: resultStrict.reason
+        });
+
+        // Test Case 2: Create Zoom Links (Relaxed)
+        const resultRelaxed = matcher.findMatchByTopic('SCOTIABANK O - ENG L3', { ignoreLevelMismatch: true });
+        console.log('Scotiabank Relaxed:', {
+            status: resultRelaxed.status,
+            score: resultRelaxed.score,
+            reason: resultRelaxed.reason
+        });
+
+        // Debug scoring details
+        const scoring = scoreCandidate(
+            'SCOTIABANK O - ENG L3',
+            haydukMeeting,
+            [haydukMeeting]
+        );
+        console.log('Scotiabank Scoring:', scoring.finalScore);
+        scoring.penalties.forEach(p => console.log(`  ${p.name}: ${p.points} (${p.reason})`));
+
+        // Expectation: Should be rejected or have very low score due to different company/content
+        expect(resultStrict.status).toBe('not_found'); // Was 'assigned' but expectations changed to 'not_found' for hard reject
+    });
+
+    it('should NOT flag COMPANY_CONFLICT for Person Names (e.g. Espinoza vs Repsol)', () => {
+        // Case: Query is "ESPINOZA", Topic is "JUAN ESPINOZA (REPSOL)"
+        // "Espinoza" is a name, NOT a company conflict with "Repsol"
+        const repsolMeeting: ZoomMeetingCandidate = {
+            meeting_id: 'repsol1',
+            topic: 'JUAN ESPINOZA (REPSOL) - ENG L3',
+            host_id: 'h1',
+            start_time: '2023-01-01'
+        };
+        const matcher = new MatchingService([repsolMeeting], []);
+
+        // "ESPINOZA" should match because the name matches, and it shouldn't be treated as a company
+        const scoring = scoreCandidate(
+            'ESPINOZA',
+            repsolMeeting,
+            [repsolMeeting]
+        );
+
+        console.log('Espinoza Scoring:', scoring.finalScore);
+        scoring.penalties.forEach(p => console.log(`  ${p.name}: ${p.points}`));
+
+        const companyConflict = scoring.penalties.find(p => p.name === 'COMPANY_CONFLICT');
+        expect(companyConflict).toBeUndefined();
+    });
+
+    it('should NOT flag COMPANY_CONFLICT for Accented Names (e.g. Mejía vs CRASH)', () => {
+        // Case: Query "Mejía Ora (PER)(ONLINE)..." vs Topic "BVP - MAYRA MEJIA ORA - L2 (CRASH-ONLINE)"
+        // "Mejía" gets tokenized as "MEJ" due to accent if regex is wrong, causing conflict with "CRASH"
+        const crashMeeting: ZoomMeetingCandidate = {
+            meeting_id: 'crash1',
+            topic: 'BVP - MAYRA MEJIA ORA - L2 (CRASH-ONLINE)',
+            host_id: 'h1',
+            start_time: '2023-01-01'
+        };
+
+        const matcher = new MatchingService([crashMeeting], []);
+
+        const scoring = scoreCandidate(
+            'Mejía Ora (PER)(ONLINE), Mayra Kasandra',
+            crashMeeting,
+            [crashMeeting]
+        );
+
+        console.log('Mejia Scoring:', scoring.finalScore);
+        scoring.penalties.forEach(p => console.log(`  ${p.name}: ${p.points}`));
+
+        // Should be found as a valid (but maybe low score) match, BUT definitely NOT a company conflict
+        const companyConflict = scoring.penalties.find(p => p.name === 'COMPANY_CONFLICT');
+        expect(companyConflict).toBeUndefined();
     });
 });

@@ -13,6 +13,7 @@ export const PENALTIES = {
     // Descartadores (score <= 0 después de aplicar)
     CRITICAL_TOKEN_MISMATCH: -100,  // CH vs TRIO vs DUO
     LEVEL_CONFLICT: -100,           // L3 vs L2
+    COMPANY_CONFLICT: -100,         // Scopibank vs Hayduk
 
     // Severos
     PROGRAM_VS_PERSON: -80,         // Query es programa, topic es persona
@@ -27,6 +28,9 @@ export const PENALTIES = {
     // Leves (causan ambigüedad)
     ORPHAN_NUMBER_WITH_SIBLINGS: -60, // Número en topic no en query + hay hermanos (AUMENTADO para evitar asignar general a específico)
     ORPHAN_LEVEL_WITH_SIBLINGS: -60,  // Nivel en topic no en query + hay hermanos (AUMENTADO para evitar asignar general a específico)
+
+    // Informativas (no afectan mucho, solo para ranking)
+    LEVEL_MISMATCH_IGNORED: -10,      // Nivel diferente pero ignorado por configuración (para detección de duplicados)
 } as const;
 
 // ============================================================================

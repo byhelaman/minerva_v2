@@ -14,6 +14,14 @@ export interface ScoringContext {
     normalizedTopic: string;
     candidate: ZoomMeetingCandidate;
     allCandidates: ZoomMeetingCandidate[];
+    options?: MatchOptions;
+}
+
+/**
+ * Opciones para configurar el comportamiento del matching
+ */
+export interface MatchOptions {
+    ignoreLevelMismatch?: boolean; // Si true, los conflictos de nivel no descartan (para detección de duplicados)
 }
 
 /**

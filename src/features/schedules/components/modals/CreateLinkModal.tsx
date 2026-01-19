@@ -247,7 +247,7 @@ const getValidationColumns = (
                                     Copy details
                                 </DropdownMenuItem>
                                 <DropdownMenuItem>
-                                    Other
+                                    Change to new
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
@@ -304,7 +304,8 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
 
         const results: ValidationResult[] = lines.map((inputName, index) => {
             // Usar findMatchByTopic que no requiere instructor
-            const matchResult = matcher.findMatchByTopic(inputName);
+            // Pasamos ignoreLevelMismatch: true para detectar duplicados incluso si el nivel cambió
+            const matchResult = matcher.findMatchByTopic(inputName, { ignoreLevelMismatch: true });
 
             // Mapear el resultado del matcher a ValidationResult
             if (matchResult.status === 'not_found') {
@@ -401,7 +402,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                                 <Textarea
                                     id="programs"
                                     placeholder="Corporate English 9AM&#10;Kids Program 10AM&#10;Business English 2PM"
-                                    className="min-h-[200px] font-mono text-sm"
+                                    className="min-h-[240px] font-mono text-sm max-h-[400px] resize-none no-scrollbar"
                                     value={inputText}
                                     onChange={(e) => setInputText(e.target.value)}
                                 />

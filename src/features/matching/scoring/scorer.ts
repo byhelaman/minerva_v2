@@ -2,14 +2,63 @@
  * Scorer - Orquestador del sistema de scoring
  * 
  * Calcula el score de cada candidato aplicando todas las penalizaciones
- * y determina la decisión final de matching.
+ * y determina la decisión final de matching usando un patrón de Rule Engine.
  */
 
 import type { ZoomMeetingCandidate } from '../services/matcher';
-import type { ScoringContext, ScoringResult, MatchEvaluation, AppliedPenalty } from './types';
+import type { ScoringContext, ScoringResult, MatchEvaluation, AppliedPenalty, MatchOptions, PenaltyFunction } from './types';
 import { ALL_PENALTIES } from './penalties';
 import { BASE_SCORE, THRESHOLDS } from '../config/matching.config';
 import { normalizeString } from '../utils/normalizer';
+
+/**
+ * Motor de Reglas de Scoring
+ * Permite registrar y ejecutar reglas de penalización de forma desacoplada.
+ */
+export class ScoringEngine {
+    private rules: PenaltyFunction[] = [];
+
+    constructor(initialRules: PenaltyFunction[] = []) {
+        this.rules = initialRules;
+    }
+
+    /**
+     * Registra una nueva regla de penalización
+     */
+    public addRule(rule: PenaltyFunction): void {
+        this.rules.push(rule);
+    }
+
+    /**
+     * Evalúa todas las reglas contra el contexto dado
+     */
+    public evaluate(ctx: ScoringContext): { finalScore: number; penalties: AppliedPenalty[]; isDisqualified: boolean } {
+        const penalties: AppliedPenalty[] = [];
+        let score = BASE_SCORE;
+
+        for (const rule of this.rules) {
+            try {
+                const result = rule(ctx);
+                if (result) {
+                    penalties.push(result);
+                    score += result.points;
+                }
+            } catch (error) {
+                console.error('Error executing scoring rule:', error);
+                // Continue execution, do not crash matching process
+            }
+        }
+
+        return {
+            finalScore: Math.max(0, score),
+            penalties,
+            isDisqualified: score <= 0
+        };
+    }
+}
+
+// Instancia por defecto con todas las penalizaciones estándar
+export const defaultScoringEngine = new ScoringEngine(ALL_PENALTIES);
 
 /**
  * Convierte un nombre de penalización técnica en un mensaje corto y claro para el usuario
@@ -19,10 +68,11 @@ function getShortReason(penalty: AppliedPenalty | null): string {
 
     switch (penalty.name) {
         case 'LEVEL_CONFLICT':
-            // Extraer niveles del reason (ej: "L4 vs L3" -> "Level mismatch")
             return 'Level mismatch';
         case 'CRITICAL_TOKEN_MISMATCH':
             return 'Program type mismatch';
+        case 'COMPANY_CONFLICT':
+            return 'Company mismatch';
         case 'GROUP_NUMBER_CONFLICT':
             return 'Group number mismatch';
         case 'NUMERIC_CONFLICT':
@@ -39,6 +89,8 @@ function getShortReason(penalty: AppliedPenalty | null): string {
             return 'Unspecified group number';
         case 'ORPHAN_LEVEL_WITH_SIBLINGS':
             return 'Unspecified level';
+        case 'LEVEL_MISMATCH_IGNORED':
+            return 'Level mismatch (Ignored)';
         default:
             return 'Match conflict';
     }
@@ -52,30 +104,8 @@ function getDetailedReason(penalty: AppliedPenalty | null, allPenalties: Applied
 
     const penalties = allPenalties.length > 0 ? allPenalties : [penalty];
     const details = penalties.map(p => {
-        switch (p.name) {
-            case 'LEVEL_CONFLICT':
-                return `Level conflict: ${p.reason || 'Levels do not match'}`;
-            case 'CRITICAL_TOKEN_MISMATCH':
-                return `Program type conflict: ${p.reason || 'Program types do not match'}`;
-            case 'GROUP_NUMBER_CONFLICT':
-                return `Group number conflict: ${p.reason || 'Group numbers do not match'}`;
-            case 'NUMERIC_CONFLICT':
-                return `Number conflict: ${p.reason || 'Numbers do not match'}`;
-            case 'PROGRAM_VS_PERSON':
-                return `Format mismatch: ${p.reason || 'Query is program format, topic is person format'}`;
-            case 'STRUCTURAL_TOKEN_MISSING':
-                return `Missing structural token: ${p.reason || 'Required program type not found in topic'}`;
-            case 'WEAK_MATCH':
-                return `Weak match: ${p.reason || 'No distinctive tokens match'}`;
-            case 'PARTIAL_MATCH_MISSING_TOKENS':
-                return `Missing tokens: ${p.reason || 'Some required tokens are missing'}`;
-            case 'ORPHAN_NUMBER_WITH_SIBLINGS':
-                return `Unspecified group: ${p.reason || 'Group number not specified but other versions exist'}`;
-            case 'ORPHAN_LEVEL_WITH_SIBLINGS':
-                return `Unspecified level: ${p.reason || 'Level not specified but other levels exist'}`;
-            default:
-                return `${p.name}: ${p.reason || 'Unknown conflict'}`;
-        }
+        const baseMsg = p.reason || 'Unknown conflict';
+        return `${p.name}: ${baseMsg}`;
     });
 
     return details.join('\n');
@@ -83,11 +113,14 @@ function getDetailedReason(penalty: AppliedPenalty | null, allPenalties: Applied
 
 /**
  * Calcula el score de un candidato aplicando todas las penalizaciones
+ * Delega la lógica al ScoringEngine.
  */
 export function scoreCandidate(
     rawProgram: string,
     candidate: ZoomMeetingCandidate,
-    allCandidates: ZoomMeetingCandidate[]
+    allCandidates: ZoomMeetingCandidate[],
+    options?: MatchOptions,
+    engine: ScoringEngine = defaultScoringEngine
 ): ScoringResult {
     const ctx: ScoringContext = {
         rawProgram,
@@ -96,26 +129,17 @@ export function scoreCandidate(
         normalizedTopic: normalizeString(candidate.topic),
         candidate,
         allCandidates,
+        options,
     };
 
-    const penalties: AppliedPenalty[] = [];
-    let score = BASE_SCORE;
-
-    // Aplicar cada penalización
-    for (const penaltyFn of ALL_PENALTIES) {
-        const result = penaltyFn(ctx);
-        if (result) {
-            penalties.push(result);
-            score += result.points; // Los puntos son negativos
-        }
-    }
+    const evaluation = engine.evaluate(ctx);
 
     return {
         candidate,
         baseScore: BASE_SCORE,
-        finalScore: Math.max(0, score), // No permitir scores negativos
-        penalties,
-        isDisqualified: score <= 0,
+        finalScore: evaluation.finalScore,
+        penalties: evaluation.penalties,
+        isDisqualified: evaluation.isDisqualified,
     };
 }
 
@@ -124,7 +148,8 @@ export function scoreCandidate(
  */
 export function evaluateMatch(
     rawProgram: string,
-    candidates: ZoomMeetingCandidate[]
+    candidates: ZoomMeetingCandidate[],
+    options?: MatchOptions
 ): MatchEvaluation {
     if (candidates.length === 0) {
         return {
@@ -137,7 +162,7 @@ export function evaluateMatch(
     }
 
     // Calcular score para cada candidato
-    const results = candidates.map(c => scoreCandidate(rawProgram, c, candidates));
+    const results = candidates.map(c => scoreCandidate(rawProgram, c, candidates, options));
 
     // Ordenar por score descendente
     results.sort((a, b) => b.finalScore - a.finalScore);
@@ -150,8 +175,24 @@ export function evaluateMatch(
         const bestRejected = results[0];
         const mainPenalty = bestRejected?.penalties[0];
 
-        // Si hay candidatos rechazados, devolver ambiguous para permitir selección manual
+        // Si hay candidatos rechazados, verificar si son rechazos "duros" (no ambiguos)
         if (results.length > 0) {
+            const hardRejectPenalties = ['COMPANY_CONFLICT', 'CRITICAL_TOKEN_MISMATCH'];
+            const isHardReject = bestRejected.penalties.some(p => hardRejectPenalties.includes(p.name));
+
+            if (isHardReject) {
+                return {
+                    bestMatch: null, // Hard reject -> No match
+                    allResults: results,
+                    decision: 'not_found',
+                    confidence: 'none',
+                    reason: mainPenalty ? getShortReason(mainPenalty) : 'No valid matches',
+                    detailedReason: mainPenalty
+                        ? getDetailedReason(mainPenalty, bestRejected?.penalties || [])
+                        : 'Match rejected due to critical conflict.',
+                };
+            }
+
             return {
                 bestMatch: bestRejected || null,
                 allResults: results,
@@ -165,34 +206,31 @@ export function evaluateMatch(
             };
         }
 
-        // Sin candidatos en absoluto
         return {
             bestMatch: null,
             allResults: results,
             decision: 'not_found',
             confidence: 'none',
             reason: 'No match found',
-            detailedReason: 'No meetings found for this schedule. The meeting may not exist in Zoom or uses a different naming convention.',
+            detailedReason: 'No meetings found for this schedule.',
         };
     }
 
     const best = validResults[0];
     const second = validResults[1];
 
-    // Verificar ambigüedad
+    // Verificar ambigüedad por score similar
     if (second) {
         const scoreDiff = best.finalScore - second.finalScore;
         if (scoreDiff < THRESHOLDS.AMBIGUITY_DIFF) {
-
             const detailedReason = 'Multiple matches found. Please review the list and manually select the best match.';
-
             return {
                 decision: 'ambiguous',
                 reason: 'Multiple matches found',
                 detailedReason,
                 bestMatch: best,
-                allResults: results, // Keep allResults for debugging/context
-                confidence: 'low', // Explicitly set confidence for ambiguity
+                allResults: results,
+                confidence: 'low',
                 ambiguousCandidates: validResults.map(r => r.candidate)
             };
         }
@@ -227,7 +265,7 @@ export function evaluateMatch(
         confidence = 'low';
     }
 
-    // Para confianza baja, marcar como ambiguo
+    // Para confianza baja, marcar como ambiguo (pero con bestMatch)
     if (confidence === 'low') {
         const detailedReason = best.penalties.length > 0
             ? getDetailedReason(best.penalties[0], best.penalties)
@@ -250,12 +288,9 @@ export function evaluateMatch(
     return {
         bestMatch: best,
         allResults: results,
-        decision: 'assigned', // El matcher determinará si es assigned o to_update según el host
+        decision: 'assigned',
         confidence,
-        reason: confidence === 'high'
-            ? '-'
-            : `Medium confidence (score: ${best.finalScore})`,
+        reason: confidence === 'high' ? '-' : `Medium confidence (score: ${best.finalScore})`,
         detailedReason,
     };
 }
-
