@@ -174,6 +174,30 @@ describe('MatchingService - Meetings', () => {
         expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
     });
 
+    // Test para falso positivo - empresa vs persona no relacionada
+    it('should NOT match company query with unrelated person topic', () => {
+        // Agregar meeting con persona no relacionada
+        const meetings = [
+            ...mockMeetings,
+            { meeting_id: 'company_false', topic: 'CARLOS ANDRES RODRIGUEZ VEGA (ACME)(ONLINE) - ENG L3', host_id: 'h99', start_time: '2023-01-01' }
+        ];
+        const testMatcher = new MatchingService(meetings, []);
+
+        const schedule = { program: 'GLOBEX CORP - ENG L3', instructor: 'Any' } as any;
+        const result = testMatcher.findMatch(schedule);
+
+        console.log('Company vs Person Test Result:', {
+            status: result.status,
+            meeting_id: result.meeting_id,
+            reason: result.reason,
+            score: result.score
+        });
+
+        // No debe matchear porque "globex" no está en el topic
+        // Debe ser "ambiguous" con score muy bajo o "not_found"
+        expect(result.meeting_id).toBeUndefined();
+    });
+
 });
 
 // ========== TESTS DE AMBIGÜEDAD ==========
@@ -292,5 +316,65 @@ describe('MatchingService - Ambiguous Cases', () => {
             expect(result.meeting_id).toBe('m_castillo');
             expect(result.status).toBe('assigned');
         }
+    });
+});
+
+// ========== TESTS DE MATCHING SIN PREFIJO BVP ==========
+// Estos tests validan el caso de uso del CreateLinkModal donde el usuario
+// ingresa nombres sin prefijo "BVP" pero los meetings en DB sí lo tienen
+
+const bvpPrefixMeetings: ZoomMeetingCandidate[] = [
+    { meeting_id: 'bvp1', topic: 'HECTOR RAFAEL MAIDANA - L5 (ONLINE)', host_id: 'h1', start_time: '2023-01-01' },
+    { meeting_id: 'bvp2', topic: 'AIDA CALDERON - L7 (ONLINE)', host_id: 'h2', start_time: '2023-01-01' },
+    { meeting_id: 'bvp3', topic: 'GUIDO MORENO - L1 (HIBRIDO)', host_id: 'h3', start_time: '2023-01-01' },
+];
+
+describe('MatchingService - Query without BVP prefix', () => {
+    let matcher: MatchingService;
+
+    beforeEach(() => {
+        matcher = new MatchingService(bvpPrefixMeetings, []);
+    });
+
+    it('should match "HECTOR RAFAEL MAIDANA - L5 (ONLINE)" to BVP topic', () => {
+        const schedule = { program: 'BVP - HECTOR RAFAEL MAIDANA - L5 (ONLINE)', instructor: 'Any' } as any;
+        const result = matcher.findMatch(schedule);
+
+        console.log('Test 1 Result:', {
+            status: result.status,
+            meeting_id: result.meeting_id,
+            reason: result.reason,
+            candidates: result.candidates?.length
+        });
+
+        expect(result.meeting_id).toBe('bvp1');
+    });
+
+    it('should match "AIDA CALDERON - L7 (ONLINE)" to BVP topic', () => {
+        const schedule = { program: 'BVP - AIDA CALDERON - L7 (ONLINE)', instructor: 'Any' } as any;
+        const result = matcher.findMatch(schedule);
+
+        console.log('Test 2 Result:', {
+            status: result.status,
+            meeting_id: result.meeting_id,
+            reason: result.reason,
+            candidates: result.candidates?.length
+        });
+
+        expect(result.meeting_id).toBe('bvp2');
+    });
+
+    it('should match "GUIDO MORENO - L1 (HIBRIDO)" to BVP topic', () => {
+        const schedule = { program: 'BVP - GUIDO MORENO - L1 (HIBRIDO)', instructor: 'Any' } as any;
+        const result = matcher.findMatch(schedule);
+
+        console.log('Test 3 Result:', {
+            status: result.status,
+            meeting_id: result.meeting_id,
+            reason: result.reason,
+            candidates: result.candidates?.length
+        });
+
+        expect(result.meeting_id).toBe('bvp3');
     });
 });

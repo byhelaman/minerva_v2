@@ -18,7 +18,7 @@ export const PENALTIES = {
     PROGRAM_VS_PERSON: -80,         // Query es programa, topic es persona
     STRUCTURAL_TOKEN_MISSING: -50,  // TRIO en query pero no en topic
     WEAK_MATCH: -80,                // No hay coincidencias distintivas (aumentado de -50)
-    MISSING_TOKEN: -60,             // Falta un token distintivo individual (Aumentado para seguridad extrema)
+    MISSING_TOKEN: -70,             // Falta un token distintivo individual (Aumentado para rechazar falsos positivos)
     MISSING_NUMERIC_TOKEN: -20,     // Falta un número suelto (Tratar como nivel implícito faltante, penalidad baja)
     MISSING_TOKEN_EXTRA_INFO: -10,  // Token extra información (si ya se cubrió el topic base >= 2 tokens)
     GROUP_NUMBER_CONFLICT: -80,     // CH 1 vs CH 3 (aumentado para rechazo estricto)

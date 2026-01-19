@@ -48,77 +48,66 @@ const extractNonLevelNumbers = (str: string): string[] => {
 // PENALIZACIONES
 // ============================================================================
 
+// ============================================================================
+// MATRIZ DE CONFLICTOS DECLARATIVA
+// ============================================================================
+
+/**
+ * Define grupos de tipos de programa que son mutuamente excluyentes.
+ * Cada grupo tiene un ID y los tokens que lo representan (sinónimos).
+ * El orden en el array determina la prioridad en los mensajes de error.
+ */
+const PROGRAM_TYPE_GROUPS = [
+    { id: 'CH', tokens: ['ch'] },
+    { id: 'TRIO', tokens: ['trio'] },
+    { id: 'DUO', tokens: ['duo', 'bvd'] },
+    { id: 'PRIVADO', tokens: ['privado', 'bvp'] },
+    { id: 'BVS', tokens: ['bvs'] },
+] as const;
+
+/**
+ * Detecta qué tipo de programa está presente en un conjunto de tokens.
+ * Retorna el ID del tipo o null si no hay ninguno.
+ */
+function detectProgramType(tokens: Set<string>): string | null {
+    for (const group of PROGRAM_TYPE_GROUPS) {
+        if (group.tokens.some(t => tokens.has(t))) {
+            return group.id;
+        }
+    }
+    return null;
+}
+
 /**
  * CH vs TRIO vs DUO - tokens mutuamente excluyentes
+ * Usa matriz declarativa para detectar conflictos de forma escalable.
  */
 export const criticalTokenMismatch: PenaltyFunction = (ctx) => {
     const qTokens = new Set(tokenize(ctx.rawProgram));
     const tTokens = new Set(tokenize(ctx.rawTopic));
 
-    // Verificar cada grupo de sinónimos
+    // Verificar grupos de sinónimos primero (DUO/BVD son equivalentes)
     for (const group of SYNONYM_GROUPS) {
         const queryHas = group.filter(t => qTokens.has(t));
         const topicHas = group.filter(t => tTokens.has(t));
 
         if (queryHas.length > 0 && topicHas.length > 0) {
-            // Ambos tienen tokens del grupo.
-            // Si es un grupo de sinónimos (como DUO/BVD), no requerimos coincidencia exacta del token.
-            // Simplemente estar en el mismo grupo es suficiente.
-            // Por lo tanto, NO retornamos penalización aquí.
+            // Ambos tienen tokens del mismo grupo de sinónimos - OK
             continue;
         }
     }
 
-    // Verificar conflictos entre grupos mutuamente excluyentes
-    // CH, TRIO, DUO/BVD, PRIVADO/BVP, y BVS son todos tipos diferentes que no deben cruzarse
-    const qCh = qTokens.has('ch');
-    const qTrio = qTokens.has('trio');
-    const qDuo = qTokens.has('duo') || qTokens.has('bvd');  // DUO = duo, bvd
-    const qPrivado = qTokens.has('privado') || qTokens.has('bvp');  // PRIVADO = privado, bvp
-    const qBvs = qTokens.has('bvs');  // BVS es tipo separado
+    // Detectar tipo de programa en query y topic
+    const queryType = detectProgramType(qTokens);
+    const topicType = detectProgramType(tTokens);
 
-    const tCh = tTokens.has('ch');
-    const tTrio = tTokens.has('trio');
-    const tDuo = tTokens.has('duo') || tTokens.has('bvd');
-    const tPrivado = tTokens.has('privado') || tTokens.has('bvp');
-    const tBvs = tTokens.has('bvs');
-
-    // CH vs otros
-    if ((qCh && tTrio) || (qTrio && tCh)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'CH vs TRIO' };
-    }
-    if ((qCh && tDuo) || (qDuo && tCh)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'CH vs DUO' };
-    }
-    if ((qCh && tPrivado) || (qPrivado && tCh)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'CH vs PRIVADO' };
-    }
-    if ((qCh && tBvs) || (qBvs && tCh)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'CH vs BVS' };
-    }
-
-    // TRIO vs otros
-    if ((qTrio && tDuo) || (qDuo && tTrio)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'TRIO vs DUO' };
-    }
-    if ((qTrio && tPrivado) || (qPrivado && tTrio)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'TRIO vs PRIVADO' };
-    }
-    if ((qTrio && tBvs) || (qBvs && tTrio)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'TRIO vs BVS' };
-    }
-
-    // DUO vs otros
-    if ((qDuo && tPrivado) || (qPrivado && tDuo)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'DUO vs PRIVADO' };
-    }
-    if ((qDuo && tBvs) || (qBvs && tDuo)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'DUO vs BVS' };
-    }
-
-    // PRIVADO vs BVS
-    if ((qPrivado && tBvs) || (qBvs && tPrivado)) {
-        return { name: 'CRITICAL_TOKEN_MISMATCH', points: PENALTIES.CRITICAL_TOKEN_MISMATCH, reason: 'PRIVADO vs BVS' };
+    // Si ambos tienen un tipo y son diferentes, es conflicto crítico
+    if (queryType && topicType && queryType !== topicType) {
+        return {
+            name: 'CRITICAL_TOKEN_MISMATCH',
+            points: PENALTIES.CRITICAL_TOKEN_MISMATCH,
+            reason: `${queryType} vs ${topicType}`
+        };
     }
 
     return null;
@@ -147,6 +136,10 @@ export const levelConflict: PenaltyFunction = (ctx) => {
 
 /**
  * Query es programa pero topic es persona
+ * 
+ * NOTA: No penalizamos si la query tiene prefijo BV* (BVP/BVD/BVS) ya que estos
+ * prefijos a menudo están en los schedules pero NO en los topics de Zoom.
+ * En ese caso, la persona en el topic ES el match correcto.
  */
 export const programVsPerson: PenaltyFunction = (ctx) => {
     const qTokens = new Set(tokenize(ctx.rawProgram));
@@ -155,6 +148,16 @@ export const programVsPerson: PenaltyFunction = (ctx) => {
     if (queryIsProgram) {
         const isPersonFormat = PERSON_FORMAT_PATTERNS.some(p => p.test(ctx.rawTopic));
         if (isPersonFormat) {
+            // Excepción: Si la query tiene BVP/BVS (Privado) o BVD (Duo), estos prefijos
+            // denotan clases con alumnos específicos (1 a 1 o parejas), lo que implica
+            // una asignación a NOMBRES DE PERSONAS en lugar de un programa genérico.
+            // solo aparece el nombre de la persona. En ambos casos, es un match válido.
+            // Por lo tanto, no debemos penalizar como conflicto "Programa vs Persona".
+            const hasBvPrefix = qTokens.has('bvp') || qTokens.has('bvd') || qTokens.has('bvs');
+            if (hasBvPrefix) {
+                return null; // No penalizar - BV* + persona es un match válido
+            }
+
             return {
                 name: 'PROGRAM_VS_PERSON',
                 points: PENALTIES.PROGRAM_VS_PERSON,
@@ -267,124 +270,176 @@ function setCacheWithLimit(key: string, value: number): void {
     levenshteinCache.set(key, value);
 }
 
-/**
- * Penaliza si faltan tokens distintivos, usando fuzzy matching
- * Y aplica "Topic Saturation": Si el topic ya está cubierto, los tokens extra penalizan menos.
- */
-export const weakMatch: PenaltyFunction = (ctx) => {
-    const queryTokens = tokenizeDistinctive(ctx.rawProgram);
-    const rawTopicTokens = tokenizeDistinctive(ctx.rawTopic);
+// ============================================================================
+// FUNCIONES AUXILIARES PARA WEAK MATCH
+// ============================================================================
 
-    // Filtrar tokens no distintivos del topic también
-    // Se expande el regex para filtrar códigos como FR3, KB2, L7, N8
-    const topicTokensList = rawTopicTokens.filter(t =>
+/**
+ * Filtra tokens distintivos de una lista, excluyendo estructurales y códigos numéricos.
+ */
+function filterDistinctiveTokens(tokens: string[]): string[] {
+    return tokens.filter(t =>
         !STRUCTURAL_TOKENS.has(t) &&
         !/^[a-z]{1,3}\d+$/i.test(t) && // Filtra l7, n8, fr3, kb1
         !/^\d+$/.test(t)
     );
+}
 
-    // Calcular cobertura del Topic
-    let matchedTopicTokens = 0;
+/**
+ * Verifica si un token tiene coincidencia fuzzy en una lista de tokens de referencia.
+ */
+function hasFuzzyMatch(token: string, referenceTokens: string[]): boolean {
+    const allowedDist = token.length < 5 ? 1 : 2;
+    return referenceTokens.some(ref => levenshtein(token, ref) <= allowedDist);
+}
 
-    for (const tToken of topicTokensList) {
-        // Exact
-        if (queryTokens.includes(tToken)) {
-            matchedTopicTokens++;
-            continue;
-        }
-        // Fuzzy
-        const hasFuzzy = queryTokens.some(qToken => {
-            const allowedDist = qToken.length < 5 ? 1 : 2;
-            return levenshtein(qToken, tToken) <= allowedDist;
-        });
-        if (hasFuzzy) {
-            matchedTopicTokens++;
+/**
+ * Calcula la cobertura del topic por la query.
+ * Retorna un objeto con métricas de cobertura.
+ */
+function calculateTokenCoverage(queryTokens: string[], topicTokens: string[]): {
+    isFullyCovered: boolean;
+    isSpecific: boolean;
+    matchedCount: number;
+} {
+    let matchedCount = 0;
+
+    for (const tToken of topicTokens) {
+        if (queryTokens.includes(tToken) || hasFuzzyMatch(tToken, queryTokens)) {
+            matchedCount++;
         }
     }
 
-    const isTopicFullyCovered = matchedTopicTokens >= topicTokensList.length;
-    // Permitir saturación incluso si el topic tiene solo 1 token distintivo (e.g. "Pacora")
-    // La seguridad está garantizada por hasPersonTitle (si hay Dr/Mr, se fuerza estrictez)
-    const isTopicSpecific = topicTokensList.length >= 1;
+    return {
+        isFullyCovered: matchedCount >= topicTokens.length,
+        isSpecific: topicTokens.length >= 1,
+        matchedCount,
+    };
+}
 
-    // Title Check (Dr, Mr...)
-    const rawQueryLower = ctx.rawProgram.toLowerCase();
-    const hasPersonTitle = /\b(dr|mr|mrs|ms|prof)\b/.test(rawQueryLower);
+/**
+ * Detecta si query y/o topic tienen formato de persona y si hay títulos formales.
+ */
+function detectPersonFormat(rawProgram: string, rawTopic: string): {
+    queryIsPerson: boolean;
+    topicIsPerson: boolean;
+    bothArePeople: boolean;
+    hasPersonTitle: boolean;
+} {
+    const queryIsPerson = PERSON_FORMAT_PATTERNS.some(p => p.test(rawProgram));
+    const topicIsPerson = PERSON_FORMAT_PATTERNS.some(p => p.test(rawTopic));
+    const hasPersonTitle = /\b(dr|mr|mrs|ms|prof)\b/.test(rawProgram.toLowerCase());
 
-    // Person Format Check: Si AMBOS query y topic son formatos de persona,
-    // los tokens extra (segundos nombres, sufijos) penalizan menos
-    const queryLooksLikePerson = PERSON_FORMAT_PATTERNS.some(p => p.test(ctx.rawProgram));
-    const topicLooksLikePerson = PERSON_FORMAT_PATTERNS.some(p => p.test(ctx.rawTopic));
-    const bothArePeople = queryLooksLikePerson && topicLooksLikePerson;
+    return {
+        queryIsPerson,
+        topicIsPerson,
+        bothArePeople: queryIsPerson && topicIsPerson,
+        hasPersonTitle,
+    };
+}
 
-    // Permitir info extra si:
-    // 1. El topic está completamente cubierto por la query, Y
-    // 2. El topic es específico (tiene al menos 1 token), Y
-    // 3. No hay títulos formales (Dr, Mr...), Y
-    // 4. (NUEVO) Si ambos son personas, ser más permisivo con tokens extra
-    const allowExtraInfo = (isTopicFullyCovered && isTopicSpecific && !hasPersonTitle) || (bothArePeople && isTopicFullyCovered);
+/**
+ * Encuentra tokens de la query que faltan en el topic.
+ */
+function findMissingTokens(queryTokens: string[], topicTokens: string[]): string[] {
+    return queryTokens.filter(qToken => {
+        if (topicTokens.includes(qToken)) return false;
+        return !hasFuzzyMatch(qToken, topicTokens);
+    });
+}
 
-    const distinctiveQueryTokens = queryTokens.filter(t =>
-        !STRUCTURAL_TOKENS.has(t) &&
-        !/^[ln]\d+$/i.test(t) &&
-        !/^\d+$/.test(t)
+/**
+ * Aplica la penalización por tokens faltantes según el contexto.
+ */
+function applyMissingTokenPenalty(
+    missingTokens: string[],
+    totalQueryTokens: number,
+    allowExtraInfo: boolean,
+    hasPersonTitle: boolean,
+    isTopicCovered: boolean
+): { name: string; points: number; reason: string } | null {
+    if (missingTokens.length === 0) return null;
+
+    // Caso 1: Ningún token distintivo coincide → WEAK_MATCH
+    if (missingTokens.length === totalQueryTokens) {
+        return {
+            name: 'WEAK_MATCH',
+            points: PENALTIES.WEAK_MATCH,
+            reason: `Ningún token distintivo coincide: ${missingTokens.join(', ')}`
+        };
+    }
+
+    // Caso 2: Penalización leve por info extra (topic cubierto)
+    if (allowExtraInfo) {
+        return {
+            name: 'PARTIAL_MATCH_MISSING_TOKENS',
+            points: PENALTIES.MISSING_TOKEN_EXTRA_INFO * missingTokens.length,
+            reason: `Faltan tokens (Info Extra): ${missingTokens.join(', ')}`
+        };
+    }
+
+    // Caso 3: Penalización estándar por tokens faltantes
+    const mismatchReason = hasPersonTitle
+        ? 'TitleDetected'
+        : (!isTopicCovered ? 'NoCoverage' : 'NotSpecific');
+
+    let totalPoints = 0;
+    const missingDetails: string[] = [];
+
+    for (const token of missingTokens) {
+        const isNumeric = /^\d+$/.test(token);
+        if (isNumeric) {
+            totalPoints += PENALTIES.MISSING_NUMERIC_TOKEN;
+            missingDetails.push(`${token} (Num)`);
+        } else {
+            totalPoints += PENALTIES.MISSING_TOKEN;
+            missingDetails.push(token);
+        }
+    }
+
+    return {
+        name: 'PARTIAL_MATCH_MISSING_TOKENS',
+        points: totalPoints,
+        reason: `Faltan tokens (Mismatch - ${mismatchReason}): ${missingDetails.join(', ')}`
+    };
+}
+
+// ============================================================================
+// PENALIZACIÓN WEAK MATCH (REFACTORIZADA)
+// ============================================================================
+
+/**
+ * Penaliza si faltan tokens distintivos, usando fuzzy matching.
+ * Aplica "Topic Saturation": Si el topic ya está cubierto, los tokens extra penalizan menos.
+ */
+export const weakMatch: PenaltyFunction = (ctx) => {
+    // 1. Tokenizar y filtrar
+    const queryTokens = tokenizeDistinctive(ctx.rawProgram);
+    const topicTokens = filterDistinctiveTokens(tokenizeDistinctive(ctx.rawTopic));
+    const distinctiveQueryTokens = filterDistinctiveTokens(queryTokens);
+
+    if (distinctiveQueryTokens.length === 0) return null;
+
+    // 2. Calcular cobertura y detectar formatos
+    const coverage = calculateTokenCoverage(queryTokens, topicTokens);
+    const personFormat = detectPersonFormat(ctx.rawProgram, ctx.rawTopic);
+
+    // 3. Determinar si se permite info extra
+    const allowExtraInfo =
+        (coverage.isFullyCovered && coverage.isSpecific && !personFormat.hasPersonTitle) ||
+        (personFormat.bothArePeople && coverage.isFullyCovered);
+
+    // 4. Encontrar tokens faltantes
+    const missingTokens = findMissingTokens(distinctiveQueryTokens, topicTokens);
+
+    // 5. Aplicar penalización
+    return applyMissingTokenPenalty(
+        missingTokens,
+        distinctiveQueryTokens.length,
+        allowExtraInfo,
+        personFormat.hasPersonTitle,
+        coverage.isFullyCovered
     );
-
-    if (distinctiveQueryTokens.length > 0) {
-        // Encontrar tokens que faltan (Query tokens NOT in Topic)
-        const missingTokens = distinctiveQueryTokens.filter(qToken => {
-            if (topicTokensList.includes(qToken)) return false;
-            const hasFuzzy = topicTokensList.some(tToken => {
-                const allowedDist = qToken.length < 5 ? 1 : 2;
-                return levenshtein(qToken, tToken) <= allowedDist;
-            });
-            return !hasFuzzy;
-        });
-
-        if (missingTokens.length > 0) {
-            if (missingTokens.length === distinctiveQueryTokens.length) {
-                return {
-                    name: 'WEAK_MATCH',
-                    points: PENALTIES.WEAK_MATCH,
-                    reason: `Ningún token distintivo coincide: ${missingTokens.join(', ')}`
-                };
-            } else {
-                if (allowExtraInfo) {
-                    return {
-                        name: 'PARTIAL_MATCH_MISSING_TOKENS',
-                        points: PENALTIES.MISSING_TOKEN_EXTRA_INFO * missingTokens.length,
-                        reason: `Faltan tokens (Info Extra): ${missingTokens.join(', ')}`
-                    };
-                } else {
-                    // Diagnóstico integrado
-                    const mismatchReason = hasPersonTitle ? 'TitleDetected' : (!isTopicFullyCovered ? 'NoCoverage' : 'NotSpecific');
-
-                    // Calcular puntos totales basado en si los tokens faltantes son numéricos
-                    let totalPoints = 0;
-                    const missingDetails: string[] = [];
-
-                    for (const token of missingTokens) {
-                        const isNumeric = /^\d+$/.test(token);
-                        if (isNumeric) {
-                            totalPoints += PENALTIES.MISSING_NUMERIC_TOKEN;
-                            missingDetails.push(`${token} (Num)`);
-                        } else {
-                            totalPoints += PENALTIES.MISSING_TOKEN;
-                            missingDetails.push(token);
-                        }
-                    }
-
-                    return {
-                        name: 'PARTIAL_MATCH_MISSING_TOKENS',
-                        points: totalPoints,
-                        reason: `Faltan tokens (Mismatch - ${mismatchReason}): ${missingDetails.join(', ')}`
-                    };
-                }
-            }
-        }
-    }
-
-    return null;
 };
 
 /**

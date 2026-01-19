@@ -307,7 +307,7 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="!max-w-[1260px] max-h-[85vh] flex flex-col">
+            <DialogContent className="!max-w-7xl max-h-[85vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>Automatic Assignment</DialogTitle>
                     <DialogDescription>

@@ -117,6 +117,50 @@ export class MatchingService {
         this.fuseUsers = new Fuse(normalizedUsers, usersOptions);
     }
 
+    // =========================================================================
+    // MÉTODOS PRIVADOS DE BÚSQUEDA
+    // =========================================================================
+
+    /**
+     * Busca candidatos de meeting usando estrategia escalonada:
+     * 1. Búsqueda exacta en diccionario normalizado
+     * 2. Búsqueda fuzzy con Fuse.js
+     * 3. Token set matching como fallback
+     * 
+     * @param programNormalized - El programa ya normalizado
+     * @returns Array de candidatos encontrados
+     */
+    private findMeetingCandidates(programNormalized: string): ZoomMeetingCandidate[] {
+        // 1. Búsqueda Exacta (devuelve array para manejar colisiones)
+        if (this.meetingsDict[programNormalized]) {
+            return this.meetingsDict[programNormalized];
+        }
+
+        // 2. Búsqueda Fuzzy con Fuse.js
+        const searchResults = this.fuseMeetings.search(programNormalized);
+        const fuzzyMatches = searchResults
+            .filter(r => r.score !== undefined && r.score <= THRESHOLDS.FUSE_MAX_SCORE)
+            .map(r => r.item);
+
+        if (fuzzyMatches.length > 0) {
+            return fuzzyMatches;
+        }
+
+        // 3. Coincidencia por Conjunto de Tokens (alternativa)
+        const queryTokens = new Set(programNormalized.split(" ").filter(t => t.length >= 2));
+
+        return this.meetings.filter(m => {
+            const topicTokens = normalizeString(m.topic).split(" ");
+            const intersection = topicTokens.filter(t => queryTokens.has(t));
+            const hasMeaningfulMatch = intersection.some(t => isNaN(Number(t)) && t.length > 2);
+            const overlapRatio = intersection.length / queryTokens.size;
+
+            return hasMeaningfulMatch &&
+                intersection.length >= THRESHOLDS.MIN_MATCHING_TOKENS &&
+                overlapRatio >= THRESHOLDS.TOKEN_OVERLAP_MIN;
+        });
+    }
+
     /**
      * Encontrar mejores coincidencias para un solo horario usando Sistema de Scoring
      * (HMR Trigger: v2)
@@ -145,7 +189,7 @@ export class MatchingService {
             } else if (this.usersDictDisplay[instructorNormalized]) {
                 instructor = this.usersDictDisplay[instructorNormalized];
             } else {
-                // 1.b. Token Subset Match
+                // 1.b. Coincidencia de Subconjunto de Tokens
                 const queryTokens = new Set(instructorNormalized.split(" "));
                 const tokenMatches = this.users.filter(u => {
                     const uNameTokens = normalizeString(`${u.first_name} ${u.last_name}`).split(" ");
@@ -167,7 +211,7 @@ export class MatchingService {
                         return currLen > prevLen ? current : prev;
                     });
                 } else {
-                    // 1.c. Fuse.js Fuzzy Match (con validación adicional)
+                    // 1.c. Coincidencia Difusa con Fuse.js (con validación adicional)
                     const userResults = this.fuseUsers.search(instructorNormalized);
                     if (userResults.length > 0 && userResults[0].score !== undefined && userResults[0].score <= 0.45) {
                         const candidate = userResults[0].item;
@@ -202,35 +246,9 @@ export class MatchingService {
         }
 
         // ---------------------------------------------------------------------
-        // PASO 2: Obtener Candidatos de Meeting
+        // PASO 2: Obtener Candidatos de Meeting (usando método compartido)
         // ---------------------------------------------------------------------
-        let candidates: ZoomMeetingCandidate[] = [];
-
-        // 2.a. Búsqueda Exacta (ahora devuelve array para manejar colisiones)
-        if (this.meetingsDict[programNormalized]) {
-            candidates = this.meetingsDict[programNormalized];
-        }
-        else {
-            const searchResults = this.fuseMeetings.search(programNormalized);
-            candidates = searchResults
-                .filter(r => r.score !== undefined && r.score <= THRESHOLDS.FUSE_MAX_SCORE)
-                .map(r => r.item);
-        }
-
-        if (candidates.length === 0) {
-            const queryTokens = new Set(programNormalized.split(" ").filter(t => t.length >= 2));
-
-            candidates = this.meetings.filter(m => {
-                const topicTokens = normalizeString(m.topic).split(" ");
-                const intersection = topicTokens.filter(t => queryTokens.has(t));
-                const hasMeaningfulMatch = intersection.some(t => isNaN(Number(t)) && t.length > 2);
-                const overlapRatio = intersection.length / queryTokens.size;
-
-                return hasMeaningfulMatch &&
-                    intersection.length >= THRESHOLDS.MIN_MATCHING_TOKENS &&
-                    overlapRatio >= THRESHOLDS.TOKEN_OVERLAP_MIN;
-            });
-        }
+        const candidates = this.findMeetingCandidates(programNormalized);
 
         // ---------------------------------------------------------------------
         // PASO 3: Evaluar Candidatos con Sistema de Scoring
@@ -301,8 +319,72 @@ export class MatchingService {
     }
 
     /**
-     * Process all schedules asynchronously in chunks to avoid blocking the UI.
-     * Yields to the event loop between batches.
+     * Buscar coincidencia solo por tema (sin validación de instructor).
+     * Usado para CreateLinkModal donde solo queremos verificar si existe una reunión.
+     */
+    public findMatchByTopic(topic: string): MatchResult {
+        // Crear un horario falso con solo el programa
+        const fakeSchedule = { program: topic, instructor: '' } as any;
+
+        const result: MatchResult = {
+            schedule: fakeSchedule,
+            status: 'not_found',
+            reason: '',
+            candidates: []
+        };
+
+        const programNormalized = normalizeString(topic);
+
+        // Obtener candidatos usando método compartido
+        const candidates = this.findMeetingCandidates(programNormalized);
+
+        result.candidates = candidates;
+
+        if (candidates.length === 0) {
+            result.reason = 'Not found';
+            return result;
+        }
+
+        // Evaluar candidatos - evaluateMatch espera string rawProgram
+        const evaluation = evaluateMatch(topic, candidates);
+
+        if (evaluation.decision === 'not_found') {
+            result.reason = evaluation.reason;
+            result.detailedReason = evaluation.detailedReason;
+            if (evaluation.bestMatch) {
+                result.bestMatch = evaluation.bestMatch.candidate;
+                result.matchedCandidate = evaluation.bestMatch.candidate;
+            }
+            return result;
+        }
+
+        if (evaluation.decision === 'ambiguous') {
+            result.status = 'ambiguous';
+            result.reason = evaluation.reason;
+            result.detailedReason = evaluation.detailedReason;
+            result.ambiguousCandidates = evaluation.ambiguousCandidates;
+            if (evaluation.bestMatch) {
+                result.bestMatch = evaluation.bestMatch.candidate;
+                result.score = evaluation.bestMatch.finalScore;
+            }
+            return result;
+        }
+
+        // Coincidencia encontrada - asignar sin validación de instructor
+        const meeting = evaluation.bestMatch!.candidate;
+        result.status = 'assigned';
+        result.meeting_id = meeting.meeting_id;
+        result.matchedCandidate = meeting;
+        result.bestMatch = meeting;
+        result.score = evaluation.bestMatch!.finalScore;
+        result.reason = `Score: ${result.score}`;
+
+        return result;
+    }
+
+    /**
+     * Procesar todos los horarios asíncronamente en fragmentos para evitar bloquear la UI.
+     * Cede el control al event loop entre lotes.
      */
     public matchAll(schedules: Schedule[]): MatchResult[] {
         clearLevenshteinCache();
