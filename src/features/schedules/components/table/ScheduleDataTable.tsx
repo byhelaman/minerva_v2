@@ -43,6 +43,7 @@ interface ScheduleDataTableProps<TData, TValue> {
     hideActions?: boolean;
     hideOverlaps?: boolean;
     disableRefresh?: boolean;
+    initialPageSize?: number;
 }
 
 export function ScheduleDataTable<TData, TValue>({
@@ -133,7 +134,7 @@ export function ScheduleDataTable<TData, TValue>({
         },
         initialState: {
             pagination: {
-                pageSize: 25,
+                pageSize: props.initialPageSize || 25,
             },
         },
         enableRowSelection: (() => {
