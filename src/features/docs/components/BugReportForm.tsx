@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Controller, useForm } from "react-hook-form"
 import { toast } from "sonner"
 import * as z from "zod"
-import { Bug } from "lucide-react"
+import { Bug, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -35,20 +35,62 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
+import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/components/auth-provider"
+
+// Función helper para contar palabras
+const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+};
+
+// Validador custom para límite de palabras
+const maxWords = (max: number) => (val: string) => {
+    return countWords(val) <= max;
+};
 
 const formSchema = z.object({
     title: z
         .string()
         .min(5, "Bug title must be at least 5 characters.")
-        .max(32, "Bug title must be at most 32 characters."),
+        .max(50, "Bug title must be at most 50 characters."),
     description: z
         .string()
-        .min(20, "Description must be at least 20 characters.")
-        .max(100, "Description must be at most 100 characters."),
+        .min(10, "Description must be at least 10 characters.")
+        .refine(maxWords(200), "Description must be at most 200 words."),
 })
+
+const RATE_LIMIT_KEY = 'bug_report_cooldown'
+const COOLDOWN_MS = 30000 // 30 segundos
 
 export function BugReportButton() {
     const [open, setOpen] = React.useState(false)
+    const [isSubmitting, setIsSubmitting] = React.useState(false)
+    const { user, profile } = useAuth()
+
+    // Limpiar cooldown expirado de localStorage al montar
+    React.useEffect(() => {
+        const stored = localStorage.getItem(RATE_LIMIT_KEY)
+        if (stored) {
+            const expiry = parseInt(stored, 10)
+            if (Date.now() >= expiry) {
+                localStorage.removeItem(RATE_LIMIT_KEY)
+            }
+        }
+    }, [])
+
+    // Verificar rate limit (calculado al momento de usar, no cada render)
+    const checkRateLimit = (): { allowed: boolean; secondsRemaining: number } => {
+        const stored = localStorage.getItem(RATE_LIMIT_KEY)
+        if (!stored) return { allowed: true, secondsRemaining: 0 }
+
+        const expiry = parseInt(stored, 10)
+        if (Date.now() >= expiry) {
+            localStorage.removeItem(RATE_LIMIT_KEY)
+            return { allowed: true, secondsRemaining: 0 }
+        }
+
+        return { allowed: false, secondsRemaining: Math.ceil((expiry - Date.now()) / 1000) }
+    }
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -58,14 +100,47 @@ export function BugReportButton() {
         },
     })
 
-    function onSubmit(data: z.infer<typeof formSchema>) {
-        toast.success("Bug report submitted!", {
-            description: "Thank you for helping us improve Minerva.",
-            position: "bottom-right",
-        })
-        console.log("Bug report:", data)
-        form.reset()
-        setOpen(false)
+    async function onSubmit(data: z.infer<typeof formSchema>) {
+        // Rate limit check
+        const rateLimit = checkRateLimit()
+        if (!rateLimit.allowed) {
+            toast.error("Please wait", {
+                description: `You can submit another report in ${rateLimit.secondsRemaining} seconds.`,
+                position: "bottom-right",
+            })
+            return
+        }
+
+        setIsSubmitting(true)
+
+        try {
+            const { error } = await supabase.from('bug_reports').insert({
+                title: data.title,
+                description: data.description,
+                user_id: user?.id || null,
+                user_email: user?.email || profile?.email || 'anonymous',
+            })
+
+            if (error) throw error
+
+            toast.success("Bug report submitted!", {
+                description: "Thank you for helping us improve Minerva.",
+                position: "bottom-right",
+            })
+            form.reset()
+            setOpen(false)
+
+            // Aplicar cooldown persistente en localStorage
+            localStorage.setItem(RATE_LIMIT_KEY, (Date.now() + COOLDOWN_MS).toString())
+        } catch (error) {
+            console.error("Error submitting bug report:", error)
+            toast.error("Failed to submit bug report", {
+                description: "Please try again later.",
+                position: "bottom-right",
+            })
+        } finally {
+            setIsSubmitting(false)
+        }
     }
 
     return (
@@ -131,12 +206,12 @@ export function BugReportButton() {
                                                     id="bug-report-description"
                                                     placeholder="Describe what happened..."
                                                     rows={4}
-                                                    className="min-h-20 resize-none"
+                                                    className="min-h-20 resize-none max-h-[200px] no-scrollbar"
                                                     aria-invalid={fieldState.invalid}
                                                 />
                                                 <InputGroupAddon align="block-end">
                                                     <InputGroupText className="tabular-nums">
-                                                        {field.value.length}/100
+                                                        {countWords(field.value)}/200
                                                     </InputGroupText>
                                                 </InputGroupAddon>
                                             </InputGroup>
@@ -156,15 +231,17 @@ export function BugReportButton() {
                         <Button
                             type="button"
                             variant="outline"
+                            disabled={isSubmitting}
                             onClick={() => {
                                 form.reset()
-                                setOpen(false)
+                                // setOpen(false)
                             }}
                         >
                             Reset
                         </Button>
-                        <Button type="submit" form="bug-report-form">
-                            Submit
+                        <Button type="submit" form="bug-report-form" disabled={isSubmitting}>
+                            {isSubmitting && <Loader2 className="animate-spin" />}
+                            {isSubmitting ? "Submitting..." : "Submit"}
                         </Button>
                     </CardFooter>
                 </Card>
