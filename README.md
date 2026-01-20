@@ -13,7 +13,7 @@ Role-based authentication management system using Supabase and Tauri.
 
 ```bash
 # Clone repository
-git clone <url> && cd minerva_v2
+git clone <url> && cd minerva
 
 # Install dependencies
 pnpm install

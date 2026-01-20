@@ -45,31 +45,36 @@ function Layout() {
 
 
 
+import { UpdateDialog } from "@/components/update-dialog";
+
 function App() {
   return (
-    <Routes>
-      {/* Ruta pública - Login (signup se hace desde el dialog) */}
-      <Route path="/login" element={<LoginPage />} />
+    <>
+      <UpdateDialog />
+      <Routes>
+        {/* Ruta pública - Login (signup se hace desde el dialog) */}
+        <Route path="/login" element={<LoginPage />} />
 
-      {/* Rutas protegidas */}
-      <Route
-        element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/" element={<ScheduleDashboard />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/docs" element={<DocsPage />} />
-        <Route path="/system" element={
-          <AdminRoute>
-            <SystemPage />
-          </AdminRoute>
-        } />
-      </Route>
-    </Routes>
+        {/* Rutas protegidas */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/" element={<ScheduleDashboard />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/system" element={
+            <AdminRoute>
+              <SystemPage />
+            </AdminRoute>
+          } />
+        </Route>
+      </Routes>
+    </>
   );
 }
 

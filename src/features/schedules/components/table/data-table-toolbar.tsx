@@ -182,6 +182,7 @@ export function DataTableToolbar<TData>({
                     item.branch,
                     formatTimeTo12Hour(item.start_time),
                     formatTimeTo12Hour(item.end_time),
+                    item.code,
                     item.instructor,
                     item.program,
                     item.minutes,

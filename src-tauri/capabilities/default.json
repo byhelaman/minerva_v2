@@ -13,6 +13,8 @@
     "fs:default",
     "fs:allow-applocaldata-read",
     "fs:allow-applocaldata-write",
-    "fs:allow-applocaldata-meta"
+    "fs:allow-applocaldata-meta",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

@@ -1,4 +1,3 @@
-
 use std::fs;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -9,11 +8,19 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn save_file(app: tauri::AppHandle, window: tauri::Window, title: String, default_name: String, content: Vec<u8>, open_file: bool) -> Result<bool, String> {
+async fn save_file(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    title: String,
+    default_name: String,
+    content: Vec<u8>,
+    open_file: bool,
+) -> Result<bool, String> {
     // 1. Mostrar diálogo nativo "Guardar Como"
     // Esto es el Core de la seguridad: El usuario DEBE interactuar para guardar fuera del sandbox
     // Usamos blocking_save_file para simplificar el flujo async en este comando
-    let file_path = app.dialog()
+    let file_path = app
+        .dialog()
         .file()
         .set_parent(&window)
         .set_title(title)
@@ -31,11 +38,13 @@ async fn save_file(app: tauri::AppHandle, window: tauri::Window, title: String, 
 
         // 3. Abrir el archivo si se solicitó (Feedback visual inmediato)
         if open_file {
-             // Convertir path a string para el plugin opener
-             let path_str = path_buf.to_string_lossy().to_string();
-             app.opener().open_path(path_str, None::<&str>).map_err(|e| e.to_string())?;
+            // Convertir path a string para el plugin opener
+            let path_str = path_buf.to_string_lossy().to_string();
+            app.opener()
+                .open_path(path_str, None::<&str>)
+                .map_err(|e| e.to_string())?;
         }
-        
+
         Ok(true) // Guardado exitoso
     } else {
         Ok(false) // Usuario canceló
@@ -48,6 +57,13 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![greet, save_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
