@@ -10,15 +10,12 @@ import {
     STRUCTURAL_TOKENS,
     PROGRAM_TYPES,
     PERSON_FORMAT_PATTERNS,
+    getAllIrrelevantWords,
 } from '../config/matching.config';
 import { normalizeString } from '../utils/normalizer';
-import irrelevantWordsConfig from '../config/irrelevant-words.json';
 
 // Construir Set de palabras irrelevantes para búsqueda rápida O(1)
-const IRRELEVANT_TOKENS = new Set<string>();
-Object.values(irrelevantWordsConfig.categories).forEach(cat => {
-    cat.forEach(word => IRRELEVANT_TOKENS.add(word.toLowerCase()));
-});
+const IRRELEVANT_TOKENS = getAllIrrelevantWords();
 // También agregamos "group", "grupo" que son estructurales comunes
 IRRELEVANT_TOKENS.add('group');
 IRRELEVANT_TOKENS.add('grupo');
@@ -26,10 +23,7 @@ IRRELEVANT_TOKENS.add('grupo');
 const IGNORED_COMPANY_TOKENS = new Set([
     ...STRUCTURAL_TOKENS,
     ...PROGRAM_TYPES,
-    'online', 'hibrido', 'eng', 'advanced', 'master', 'intermediate',
-    'beginner', 'presencial', 'remoto', 'virtual', 'zoom', 'clase',
-    'grupo', 'group', 'level', 'nivel', 'basic', 'upper', 'b1', 'b2', 'c1', 'c2',
-    'manual', 'qa', 'automation', 'java', 'python', 'javascript', 'react', 'node'
+    ...Array.from(IRRELEVANT_TOKENS)
 ]);
 
 // ============================================================================

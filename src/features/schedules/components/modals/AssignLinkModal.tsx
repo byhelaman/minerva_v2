@@ -114,8 +114,9 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                 const { originalState: existingBackup, ...currentState } = r;
                 const backup: Omit<MatchResult, 'originalState'> = existingBackup || currentState;
 
-                // Mantener 'manual' si ya era manual, de lo contrario 'to_update'
-                const newStatus = r.status === 'manual' ? 'manual' as const : 'to_update' as const;
+                // Solo cambiar a 'manual' si ya tenemos un meeting asignado. 
+                // Si es ambiguo (sin meeting), mantenerlo ambiguo hasta que se seleccione uno.
+                const newStatus = r.meeting_id ? 'manual' as const : r.status;
 
                 return {
                     ...r,
@@ -123,7 +124,8 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                     originalState: backup,
                     found_instructor: newFoundInstructor,
                     status: newStatus,
-                    reason: 'Change host'
+                    manualMode: true,
+                    reason: 'Host changed manually'
                 };
             }
             return r;
@@ -137,10 +139,28 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
         const updatedResults = currentResults.map(r => {
             const id = getRowId(r.schedule);
             if (id === rowId) {
-                return {
-                    ...r,
-                    manualMode: !r.manualMode
-                };
+                const newManualMode = !r.manualMode;
+
+                if (newManualMode) {
+                    // Activar manual mode
+                    // Crear backup del estado si no existe
+                    const { originalState: existingBackup, ...currentState } = r;
+                    const backup: Omit<MatchResult, 'originalState'> = existingBackup || currentState;
+
+                    return {
+                        ...r,
+                        manualMode: true,
+                        // No forzamos cambio de status ni razón al solo activar el modo
+                        originalState: backup
+                    };
+                } else {
+                    // Desactivar manual mode -> "Commit" de cambios
+                    // Simplemente deshabilitamos la edición pero mantenemos los cambios y el status 'manual'
+                    return {
+                        ...r,
+                        manualMode: false
+                    };
+                }
             }
             return r;
         });
@@ -178,6 +198,16 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
         const updatedResults = currentResults.map(r => {
             const id = getRowId(r.schedule);
             if (id === rowId) {
+                // Si tenemos un backup del estado original, lo restauramos
+                // Esto recupera el "reason" original (ej: "Weak match") en lugar de sobreescribirlo
+                if (r.originalState) {
+                    return {
+                        ...r.originalState,
+                        originalState: r.originalState, // Mantener el backup
+                        manualMode: false
+                    };
+                }
+
                 return {
                     ...r,
                     status: 'ambiguous' as const,

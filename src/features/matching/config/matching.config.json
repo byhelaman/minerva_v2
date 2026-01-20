@@ -1,0 +1,237 @@
+{
+  "$schema": "./matching.schema.json",
+  "scoring": {
+    "baseScore": 100,
+    "penalties": {
+      "CRITICAL_TOKEN_MISMATCH": -100,
+      "LEVEL_CONFLICT": -100,
+      "COMPANY_CONFLICT": -100,
+      "PROGRAM_VS_PERSON": -80,
+      "WEAK_MATCH": -80,
+      "GROUP_NUMBER_CONFLICT": -80,
+      "MISSING_TOKEN": -70,
+      "ORPHAN_NUMBER_WITH_SIBLINGS": -60,
+      "ORPHAN_LEVEL_WITH_SIBLINGS": -60,
+      "STRUCTURAL_TOKEN_MISSING": -50,
+      "NUMERIC_CONFLICT": -30,
+      "MISSING_NUMERIC_TOKEN": -20,
+      "MISSING_TOKEN_EXTRA_INFO": -10,
+      "LEVEL_MISMATCH_IGNORED": -10
+    },
+    "thresholds": {
+      "HIGH_CONFIDENCE": 70,
+      "MEDIUM_CONFIDENCE": 50,
+      "MINIMUM": 30,
+      "AMBIGUITY_DIFF": 15,
+      "FUSE_MAX_SCORE": 0.3,
+      "TOKEN_OVERLAP_MIN": 0.5,
+      "MIN_MATCHING_TOKENS": 2
+    }
+  },
+  "tokens": {
+    "structural": [
+      "duo",
+      "trio",
+      "ch",
+      "bvd",
+      "bvp",
+      "bvs",
+      "privado"
+    ],
+    "programTypes": [
+      "trio",
+      "duo",
+      "ch",
+      "bvd",
+      "bvp",
+      "bvs"
+    ],
+    "synonyms": [
+      [
+        "duo",
+        "bvd"
+      ],
+      [
+        "privado",
+        "bvp"
+      ],
+      [
+        "trio"
+      ],
+      [
+        "ch"
+      ]
+    ],
+    "programTypeGroups": [
+      {
+        "id": "CH",
+        "tokens": [
+          "ch"
+        ]
+      },
+      {
+        "id": "TRIO",
+        "tokens": [
+          "trio"
+        ]
+      },
+      {
+        "id": "DUO",
+        "tokens": [
+          "duo",
+          "bvd"
+        ]
+      },
+      {
+        "id": "PRIVADO",
+        "tokens": [
+          "privado",
+          "bvp"
+        ]
+      },
+      {
+        "id": "BVS",
+        "tokens": [
+          "bvs"
+        ]
+      }
+    ]
+  },
+  "irrelevantWords": {
+    "modalities": [
+      "online",
+      "presencial",
+      "virtual",
+      "hibrido",
+      "remoto",
+      "f2f",
+      "zoom"
+    ],
+    "languages": [
+      "english",
+      "ingles",
+      "espanol",
+      "aleman",
+      "coreano",
+      "chino",
+      "ruso",
+      "japones",
+      "frances",
+      "italiano",
+      "mandarin",
+      "eng"
+    ],
+    "levels": [
+      "beginner",
+      "intermediate",
+      "advanced",
+      "upper",
+      "basic",
+      "master",
+      "nivelacion",
+      "crash",
+      "complete",
+      "revision",
+      "repaso",
+      "true"
+    ],
+    "cefrLevels": [
+      "a1",
+      "a2",
+      "b1",
+      "b2",
+      "c1",
+      "c2"
+    ],
+    "programTags": [
+      "pia",
+      "mod",
+      "esp",
+      "otg",
+      "kids",
+      "see",
+      "impact",
+      "time",
+      "zone",
+      "travel",
+      "summer",
+      "premium",
+      "business",
+      "social",
+      "gerencia",
+      "beca",
+      "camacho",
+      "keynotes"
+    ],
+    "locations": [
+      "per",
+      "ven",
+      "arg",
+      "uru"
+    ],
+    "connectors": [
+      "de",
+      "del",
+      "la",
+      "las",
+      "los",
+      "y",
+      "and"
+    ],
+    "genericWords": [
+      "grupo",
+      "group",
+      "level",
+      "nivel",
+      "clase",
+      "manual",
+      "class"
+    ],
+    "techTerms": [
+      "java",
+      "python",
+      "javascript",
+      "react",
+      "node",
+      "qa",
+      "automation"
+    ],
+    "patterns": [
+      "electiv[oa]s?",
+      "leccion[es]?",
+      "repit[eo]?",
+      "evaluacion[es]?",
+      "looks?",
+      "keynotes?",
+      "tz\\d+"
+    ]
+  },
+  "personDetection": {
+    "patterns": [
+      "^\\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+.*\\([^)]+\\).*,\\s*[A-ZÁÉÍÓÚÑ]",
+      "^\\s*[A-ZÁÉÍÓÚÑ]+\\s+[A-ZÁÉÍÓÚÑ]+\\s+[A-ZÁÉÍÓÚÑ]+\\s+-\\s*",
+      "^\\s*BV[PDS]\\s*-\\s*[A-ZÁÉÍÓÚÑ]+\\s+[A-ZÁÉÍÓÚÑ]",
+      "^\\s*[A-ZÁÉÍÓÚÑ]+\\s+[A-ZÁÉÍÓÚÑ]+\\s+[A-ZÁÉÍÓÚÑ]+\\s+[A-ZÁÉÍÓÚÑ]+\\s*\\("
+    ],
+    "titleIndicators": [
+      "dr",
+      "mr",
+      "mrs",
+      "ms",
+      "prof"
+    ]
+  },
+  "fuzzyMatching": {
+    "levenshtein": {
+      "maxCacheSize": 5000,
+      "shortTokenThreshold": 5,
+      "allowedDistanceShort": 1,
+      "allowedDistanceLong": 2
+    },
+    "fuse": {
+      "threshold": 0.3,
+      "ignoreLocation": true,
+      "useExtendedSearch": false
+    }
+  }
+}

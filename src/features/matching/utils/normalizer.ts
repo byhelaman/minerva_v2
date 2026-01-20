@@ -6,21 +6,17 @@
  * para facilitar el mantenimiento.
  */
 
-import irrelevantWordsConfig from '../config/irrelevant-words.json';
+import irrelevantWordsConfig from '../config/matching.config.json';
 
 /**
  * Construye el patrón regex desde la configuración JSON
  */
 function buildIrrelevantWordsPattern(): RegExp {
-    const allWords: string[] = [];
-
-    // Agregar todas las palabras de categorías (palabras simples)
-    for (const category of Object.values(irrelevantWordsConfig.categories)) {
-        allWords.push(...category);
-    }
+    const { patterns, ...wordsOnly } = irrelevantWordsConfig.irrelevantWords;
+    const allWords = Object.values(wordsOnly).flat();
 
     // Agregar patrones regex especiales
-    allWords.push(...irrelevantWordsConfig.patterns.items);
+    allWords.push(...patterns);
 
     // Construir el patrón regex con word boundaries
     const pattern = "\\b(" + allWords.join("|") + ")\\b";

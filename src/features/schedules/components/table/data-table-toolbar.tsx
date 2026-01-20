@@ -46,7 +46,7 @@ const branchOptions = [
     { label: "KIDS", value: "KIDS" },
 ];
 
-const statusOptions = [
+const defaultStatusOptions = [
     { label: "Assigned", value: "assigned", icon: BadgeCheckIcon },
     { label: "To Update", value: "to_update", icon: RefreshCw },
     { label: "Not Found", value: "not_found", icon: XCircle },
@@ -94,6 +94,7 @@ interface DataTableToolbarProps<TData> {
     hideUpload?: boolean;
     hideActions?: boolean;
     disableRefresh?: boolean;
+    statusOptions?: { label: string; value: string; icon?: React.ComponentType<{ className?: string }> }[];
 }
 
 export function DataTableToolbar<TData>({
@@ -109,6 +110,7 @@ export function DataTableToolbar<TData>({
     hideUpload = false,
     hideActions = false,
     disableRefresh = false,
+    statusOptions = defaultStatusOptions,
 }: DataTableToolbarProps<TData>) {
     const isFiltered =
         table.getState().columnFilters.length > 0 ||

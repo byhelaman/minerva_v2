@@ -10,7 +10,7 @@ import { useZoomStore } from "@/features/matching/stores/useZoomStore";
 import { MatchingService } from "@/features/matching/services/matcher";
 import { type ColumnDef } from "@tanstack/react-table";
 import { DataTableColumnHeader } from "@schedules/components/table/data-table-column-header";
-import { ArrowLeft, Loader2, CheckCircle2, HelpCircle, RefreshCw, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, HelpCircle, RefreshCw, MoreHorizontal, Hand, PlusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -21,7 +21,7 @@ interface CreateLinkModalProps {
 }
 
 // Tipos para el resultado de validación
-type ValidationStatus = 'to_create' | 'exists' | 'ambiguous';
+type ValidationStatus = 'to_create' | 'exists' | 'ambiguous' | 'manual';
 
 interface ValidationResult {
     id: string;
@@ -34,13 +34,15 @@ interface ValidationResult {
         meeting_id: string;
         topic: string;
         join_url?: string;
+        host_id?: string;
     }>;
+    host_id?: string; // Anfitrión preservado
 }
 
 // Columnas para la tabla de validación
 const getValidationColumns = (
     hostMap: Map<string, string> = new Map(),
-    onSelectCandidate?: (rowId: string, candidate: { meeting_id: string; topic: string; join_url?: string; host_id?: string }) => void
+    onSelectCandidate?: (rowId: string, candidate: { meeting_id: string; topic: string; join_url?: string; host_id?: string } | null) => void
 ): ColumnDef<ValidationResult>[] => [
         {
             id: "select",
@@ -48,7 +50,8 @@ const getValidationColumns = (
             header: ({ table }) => (
                 <div className="flex justify-center items-center mb-1">
                     <Checkbox
-                        disabled
+                        checked={table.getIsAllPageRowsSelected()}
+                        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
                         aria-label="Select all"
                         className="translate-y-[2px]"
                     />
@@ -57,7 +60,9 @@ const getValidationColumns = (
             cell: ({ row }) => (
                 <div className="flex justify-center">
                     <Checkbox
-                        disabled
+                        checked={row.getIsSelected()}
+                        disabled={!row.getCanSelect()}
+                        onCheckedChange={(value) => row.toggleSelected(!!value)}
                         aria-label="Select row"
                         className="translate-y-[2px] mb-1"
                     />
@@ -81,71 +86,95 @@ const getValidationColumns = (
                 if (status === 'to_create') {
                     badge = (
                         <Badge variant="outline" className="border-green-600 text-green-600 bg-green-50 dark:bg-green-950/20 dark:border-green-500 dark:text-green-400 cursor-pointer hover:bg-green-100">
-                            <CheckCircle2 className="h-3 w-3" />
+                            <CheckCircle2 />
                             New
                         </Badge>
                     );
                 } else if (status === 'exists') {
                     badge = (
                         <Badge variant="outline" className="text-muted-foreground cursor-pointer hover:bg-gray-100">
-                            <RefreshCw className="h-3 w-3" />
+                            <RefreshCw />
                             Exists
+                        </Badge>
+                    );
+                } else if (status === 'manual') {
+                    badge = (
+                        <Badge variant="outline" className="border-blue-500/50 text-blue-600 bg-blue-500/10 dark:text-blue-400 cursor-pointer hover:bg-blue-500/20">
+                            <Hand />
+                            Manual
                         </Badge>
                     );
                 } else {
                     badge = (
                         <Badge variant="outline" className="border-orange-500/50 text-orange-600 bg-orange-500/10 dark:text-orange-400 cursor-pointer hover:bg-orange-500/20">
-                            <HelpCircle className="h-3 w-3" />
+                            <HelpCircle />
                             Ambiguous
                         </Badge>
                     );
                 }
 
-                // Si es ambiguo, mostrar popover con opciones
-                if (status === 'ambiguous' && result.ambiguousCandidates && result.ambiguousCandidates.length > 0) {
-                    return (
-                        <div className="flex justify-center">
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    {badge}
-                                </PopoverTrigger>
-                                <PopoverContent className="p-0 rounded-lg" onWheel={(e) => e.stopPropagation()}>
-                                    <div className="p-4 space-y-4">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <h4 className="font-semibold text-sm">Multiple Matches Found</h4>
-                                            <Badge variant="secondary" className="text-xs">{result.ambiguousCandidates.length} options</Badge>
-                                        </div>
-                                        <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                                            {result.ambiguousCandidates.map((cand, i) => {
-                                                const isSelected = result.meeting_id === cand.meeting_id;
-                                                return (
-                                                    <div
-                                                        key={i}
-                                                        className={`border rounded-md p-2.5 transition-colors cursor-pointer ${isSelected ? 'border-green-500 bg-green-50/50 dark:bg-green-950/20' : 'hover:bg-accent/50'}`}
-                                                        onClick={() => onSelectCandidate?.(result.id, cand)}
-                                                    >
-                                                        <div className="flex items-start justify-between gap-2">
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="font-medium text-sm mb-1">{cand.topic}</div>
-                                                                <div className="text-xs text-muted-foreground">
-                                                                    ID: {cand.meeting_id}
+                // Si es ambiguo o manual (que viene de ambiguo), mostrar popover
+                if ((status === 'ambiguous' || (status === 'manual' && result.ambiguousCandidates && result.ambiguousCandidates.length > 0))) {
+                    const candidates = result.ambiguousCandidates || [];
+
+                    if (candidates.length > 0) {
+                        return (
+                            <div className="flex justify-center">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        {badge}
+                                    </PopoverTrigger>
+                                    <PopoverContent className="p-0 rounded-lg" onWheel={(e) => e.stopPropagation()}>
+                                        <div className="p-4 space-y-4">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h4 className="font-semibold text-sm">
+                                                    {status === 'manual' ? 'Manual Selection' : 'Multiple Matches Found'}
+                                                </h4>
+                                                <Badge variant="secondary" className="text-xs">{candidates.length} options</Badge>
+                                            </div>
+                                            <div className="space-y-2 max-h-[280px] overflow-y-auto no-scrollbar">
+                                                {candidates.map((cand, i) => {
+                                                    const isSelected = result.meeting_id === cand.meeting_id;
+                                                    return (
+                                                        <div
+                                                            key={i}
+                                                            className={`border rounded-md p-2.5 transition-colors cursor-pointer ${isSelected ? 'border-green-500 bg-green-50/50 dark:bg-green-950/20' : 'hover:bg-accent/50'}`}
+                                                            onClick={() => {
+                                                                if (isSelected) {
+                                                                    // Deseleccionar (volver a ambiguo)
+                                                                    onSelectCandidate?.(result.id, null);
+                                                                } else {
+                                                                    // Seleccionar
+                                                                    onSelectCandidate?.(result.id, cand);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="font-medium text-sm mb-1">{cand.topic}</div>
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        ID: {cand.meeting_id}
+                                                                    </div>
+                                                                    <div className="text-xs text-muted-foreground truncate">
+                                                                        Host: {hostMap.get(cand.host_id || '') || cand.host_id}
+                                                                    </div>
                                                                 </div>
+                                                                {isSelected && (
+                                                                    <Badge variant="outline" className="border-green-600 text-green-600 bg-green-50 dark:bg-green-950/20">
+                                                                        Selected
+                                                                    </Badge>
+                                                                )}
                                                             </div>
-                                                            {isSelected && (
-                                                                <Badge variant="outline" className="border-green-600 text-green-600 bg-green-50 dark:bg-green-950/20">
-                                                                    Selected
-                                                                </Badge>
-                                                            )}
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                    );
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        );
+                    }
                 }
 
                 // Si existe, mostrar popover con detalles del meeting
@@ -167,14 +196,13 @@ const getValidationColumns = (
                                             <div>
                                                 <div className="text-xs font-medium text-muted-foreground mb-1">Meeting ID</div>
                                                 <div className="text-sm font-mono">
-                                                    <a
-                                                        href={`https://zoom.us/meeting/${result.meeting_id}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:underline"
-                                                    >
-                                                        {result.meeting_id}
-                                                    </a>
+                                                    {result.meeting_id}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-medium text-muted-foreground mb-1">Host</div>
+                                                <div className="text-sm">
+                                                    {hostMap.get(result.host_id || '') || result.host_id || '—'}
                                                 </div>
                                             </div>
                                             {result.join_url && (
@@ -224,7 +252,14 @@ const getValidationColumns = (
                 if (!meetingId) return <div className="text-center font-mono">—</div>;
                 return (
                     <div className="text-center font-mono">
-                        {meetingId}
+                        <a
+                            href={`https://zoom.us/meeting/${meetingId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 underline"
+                        >
+                            {meetingId}
+                        </a>
                     </div>
                 );
             },
@@ -246,9 +281,6 @@ const getValidationColumns = (
                                 <DropdownMenuItem>
                                     Copy details
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                    Change to new
-                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -258,9 +290,18 @@ const getValidationColumns = (
     ];
 
 export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
-    const { meetings, users, isLoadingData, fetchZoomData } = useZoomStore();
+    const { meetings, users, isLoadingData, fetchZoomData, createMeetings, updateMatchings, isExecuting } = useZoomStore();
 
-    // Estado del wizard
+    // Crear mapa de anfitriones para búsqueda fácil
+    const hostMap = useMemo(() => {
+        const map = new Map<string, string>();
+        users.forEach(u => {
+            map.set(u.id, u.display_name || `${u.first_name} ${u.last_name}`.trim() || u.email);
+        });
+        return map;
+    }, [users]);
+
+    // Estado del asistente
     const [step, setStep] = useState<'input' | 'results'>('input');
     const [inputText, setInputText] = useState("");
     const [isValidating, setIsValidating] = useState(false);
@@ -299,7 +340,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
 
         setIsValidating(true);
 
-        // Pequeño delay para UX
+        // Pequeño retraso para UX
         await new Promise(resolve => setTimeout(resolve, 100));
 
         const results: ValidationResult[] = lines.map((inputName, index) => {
@@ -341,6 +382,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                 meeting_id: matchedMeeting?.meeting_id,
                 join_url: matchedMeeting?.join_url,
                 matchedTopic: matchedMeeting?.topic,
+                host_id: matchedMeeting?.host_id,
             };
         });
 
@@ -349,21 +391,73 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
         setStep('results');
     };
 
-    // Contadores para el resumen
-    const summary = useMemo(() => {
-        const toCreate = validationResults.filter(r => r.status === 'to_create').length;
-        const exists = validationResults.filter(r => r.status === 'exists').length;
-        const ambiguous = validationResults.filter(r => r.status === 'ambiguous').length;
-        return { toCreate, exists, ambiguous, total: validationResults.length };
+    // Selección de filas
+    const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
+
+    // Reset selección al cambiar de paso
+    useEffect(() => {
+        setRowSelection({});
+    }, [step]);
+
+    // Contadores de estado (Totales para la barra de estado)
+    const statusCounts = useMemo(() => {
+        const counts = { to_create: 0, exists: 0, ambiguous: 0, manual: 0 };
+        for (const r of validationResults) {
+            if (r.status === 'to_create') counts.to_create++;
+            else if (r.status === 'exists') counts.exists++;
+            else if (r.status === 'ambiguous') counts.ambiguous++;
+            else if (r.status === 'manual') counts.manual++;
+        }
+        return counts;
     }, [validationResults]);
 
-    // Handler para volver atrás
+    // Contadores para selección
+    const selectedCount = useMemo(() => {
+        return Object.keys(rowSelection).length;
+    }, [rowSelection]);
+
+    // Manejador para volver atrás
     const handleBack = () => {
         setStep('input');
         setValidationResults([]);
     };
 
-    // Líneas parseadas para preview
+    // Manejador para seleccionar candidato manualmente
+    const handleSelectCandidate = (rowId: string, candidate: { meeting_id: string; topic: string; join_url?: string; host_id?: string } | null) => {
+        setValidationResults(prev => prev.map(row => {
+            if (row.id === rowId) {
+                if (!candidate) {
+                    // Reiniciar a ambiguo
+                    return {
+                        ...row,
+                        status: 'ambiguous' as ValidationStatus,
+                        meeting_id: undefined,
+                        join_url: undefined,
+                        matchedTopic: undefined,
+                    };
+                }
+
+                return {
+                    ...row,
+                    status: 'manual' as ValidationStatus,
+                    meeting_id: candidate.meeting_id,
+                    join_url: candidate.join_url,
+                    matchedTopic: candidate.topic,
+                    matchedCandidate: candidate,
+                    host_id: candidate.host_id,
+                };
+            }
+            return row;
+        }));
+    };
+
+    // Columnas con manejador memorizado
+    const columns = useMemo(() =>
+        getValidationColumns(hostMap, handleSelectCandidate),
+        [hostMap]
+    );
+
+    // Líneas analizadas para vista previa
     const parsedLines = inputText.split('\n').filter(l => l.trim().length > 0);
 
     return (
@@ -380,7 +474,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                                 size="icon-sm"
                                 onClick={handleBack}
                             >
-                                <ArrowLeft />
+                                <ArrowLeft className="h-4 w-4" />
                             </Button>
                         )}
                         Create Zoom Links
@@ -388,7 +482,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                     <DialogDescription>
                         {step === 'input'
                             ? "Enter program names (one per line) to validate."
-                            : `Review and confirm Zoom meeting links`
+                            : "Review and confirm Zoom meeting links"
                         }
                     </DialogDescription>
                 </DialogHeader>
@@ -437,30 +531,113 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                     <>
                         <div className="flex-1 overflow-auto p-2">
                             <ScheduleDataTable
-                                columns={getValidationColumns()}
+                                columns={columns}
                                 data={validationResults}
                                 hideFilters
                                 hideUpload
                                 hideActions
                                 hideOverlaps
-                                enableRowSelection={false}
+                                enableRowSelection={(row) => row.status !== 'ambiguous'}
+                                controlledSelection={rowSelection}
+                                onControlledSelectionChange={setRowSelection}
                                 initialPageSize={25}
+                                statusOptions={[
+                                    { label: "New", value: "to_create", icon: PlusCircle },
+                                    { label: "Exists", value: "exists", icon: RefreshCw },
+                                    { label: "Ambiguous", value: "ambiguous", icon: HelpCircle },
+                                    { label: "Manual", value: "manual", icon: Hand },
+                                ]}
                             />
                         </div>
-                        <DialogFooter className="gap-2">
-                            <Button variant="outline" onClick={() => onOpenChange(false)}>
-                                Close
-                            </Button>
-                            {summary.toCreate > 0 && (
-                                <Button disabled>
-                                    Create {summary.toCreate} New
+                        <DialogFooter className="mt-auto flex-col sm:flex-row gap-4">
+                            {/* Barra de estado con conteos a la izquierda */}
+                            <div className="flex items-center gap-3 mr-auto text-sm text-muted-foreground">
+                                {isValidating || isExecuting ? (
+                                    <span className="text-muted-foreground">Processing...</span>
+                                ) : (
+                                    <>
+                                        <span>New: <strong className="text-foreground font-medium">{statusCounts.to_create}</strong></span>
+                                        <span className="text-border">|</span>
+                                        <span>Exists: <strong className="text-foreground font-medium">{statusCounts.exists}</strong></span>
+                                        {statusCounts.ambiguous > 0 && (
+                                            <>
+                                                <span className="text-border">|</span>
+                                                <span>Ambiguous: <strong className="text-foreground font-medium">{statusCounts.ambiguous}</strong></span>
+                                            </>
+                                        )}
+                                        {statusCounts.manual > 0 && (
+                                            <>
+                                                <span className="text-border">|</span>
+                                                <span>Manual: <strong className="text-foreground font-medium">{statusCounts.manual}</strong></span>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Botones a la derecha */}
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isExecuting}>
+                                    Cancel
                                 </Button>
-                            )}
-                            {summary.exists > 0 && (
-                                <Button variant="secondary" disabled>
-                                    Update {summary.exists} Existing
+
+                                <Button
+                                    disabled={selectedCount === 0 || isExecuting}
+                                    onClick={async () => {
+                                        const selectedRows = validationResults.filter(r => rowSelection[r.id]);
+
+                                        // Separar acciones
+                                        const toCreate = selectedRows
+                                            .filter(r => r.status === 'to_create')
+                                            .map(r => r.inputName);
+
+                                        const updates = selectedRows
+                                            .filter(r => (r.status === 'exists' || r.status === 'manual') && r.meeting_id)
+                                            .map(r => {
+                                                let schedule_for = undefined;
+                                                if (r.host_id) {
+                                                    const hostUser = users.find(u => u.id === r.host_id);
+                                                    if (hostUser) schedule_for = hostUser.email;
+                                                }
+                                                return {
+                                                    meeting_id: r.meeting_id!,
+                                                    topic: r.inputName,
+                                                    schedule_for
+                                                };
+                                            });
+
+                                        if (toCreate.length === 0 && updates.length === 0) return;
+
+                                        // Ejecutar secuencialmente o paralelo según sea necesario
+                                        // El store maneja isExecuting, así que mejor secuencial para no pisar estados si el store es simple
+                                        let successCount = 0;
+
+                                        if (toCreate.length > 0) {
+                                            const res = await createMeetings(toCreate);
+                                            successCount += res.succeeded;
+                                        }
+
+                                        if (updates.length > 0) {
+                                            const res = await updateMatchings(updates);
+                                            successCount += res.succeeded;
+                                        }
+
+                                        if (successCount > 0) {
+                                            // Validar de nuevo para refrescar estados
+                                            handleValidate();
+                                        }
+                                    }}
+                                >
+                                    {isExecuting ? (
+                                        <>
+                                            <Loader2 className="animate-spin" />
+                                            Executing...
+                                        </>
+                                    ) : (
+                                        selectedCount > 0 ? `Execute (${selectedCount})` : 'Execute'
+                                    )}
                                 </Button>
-                            )}
+                            </div>
                         </DialogFooter>
                     </>
                 )}

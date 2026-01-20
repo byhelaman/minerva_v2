@@ -165,9 +165,7 @@ export function StatusCell({
                                     <div>
                                         <div className="text-xs font-medium text-muted-foreground mb-1">Meeting ID</div>
                                         <div className="text-sm font-mono">
-                                            <a href={`https://zoom.us/meeting/${matched.meeting_id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline cursor-pointer underline underline-offset-2">
-                                                {matched.meeting_id}
-                                            </a>
+                                            {matched.meeting_id}
                                         </div>
                                     </div>
                                     <div>

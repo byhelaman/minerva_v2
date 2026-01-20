@@ -44,6 +44,7 @@ interface ScheduleDataTableProps<TData, TValue> {
     hideOverlaps?: boolean;
     disableRefresh?: boolean;
     initialPageSize?: number;
+    statusOptions?: { label: string; value: string; icon?: React.ComponentType<{ className?: string }> }[];
 }
 
 export function ScheduleDataTable<TData, TValue>({
@@ -52,6 +53,7 @@ export function ScheduleDataTable<TData, TValue>({
     onClearSchedule,
     onUploadClick,
     onRefresh,
+    statusOptions,
     ...props
 }: ScheduleDataTableProps<TData, TValue>) {
     // Use controlled selection if provided, otherwise use internal state
@@ -225,6 +227,7 @@ export function ScheduleDataTable<TData, TValue>({
                 hideUpload={props.hideUpload}
                 hideActions={props.hideActions}
                 disableRefresh={props.disableRefresh}
+                statusOptions={statusOptions}
             />
 
             {/* Table */}

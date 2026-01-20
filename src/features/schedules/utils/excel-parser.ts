@@ -66,7 +66,7 @@ const DURATION_MAP: Record<string, string> = {
 // Tags especiales que deben ser filtrados (pre-calculado como Set para eficiencia)
 const SPECIAL_TAGS = new Set(
     [
-        "@Corp",
+        "@Corp | @Corporate",
         "@Lima 2 | lima2 | @Lima Corporate",
         "@LC Bulevar Artigas",
         "@Argentina",

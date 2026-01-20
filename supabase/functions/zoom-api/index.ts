@@ -44,14 +44,25 @@ interface UpdateRequest {
         weekly_days?: string
         end_date_time?: string
     }
+    settings?: {
+        join_before_host?: boolean
+        waiting_room?: boolean
+    }
+}
+
+interface RequestItem extends UpdateRequest {
+    action?: 'create' | 'update'
+    topic?: string // required for create
+    type?: number
 }
 
 interface BatchRequest {
     batch: true
-    requests: UpdateRequest[]
+    action?: 'create' | 'update' // Global action for batch, or per-item
+    requests: RequestItem[]
 }
 
-type RequestBody = UpdateRequest | BatchRequest
+type RequestBody = RequestItem | BatchRequest
 
 function isBatchRequest(body: RequestBody): body is BatchRequest {
     return 'batch' in body && body.batch === true && Array.isArray(body.requests)
@@ -82,6 +93,19 @@ function buildZoomPatchBody(req: UpdateRequest): Record<string, unknown> {
     }
 
     return body
+}
+
+// Construir body para POST (Create) a Zoom API
+function buildZoomCreateBody(req: RequestItem): Record<string, unknown> {
+    return {
+        topic: req.topic,
+        type: req.type || 8, // Por defecto 8 (Recurrente hora fija)
+        start_time: req.start_time,
+        duration: req.duration || 60,
+        timezone: req.timezone || 'America/Lima',
+        recurrence: req.recurrence,
+        settings: req.settings
+    }
 }
 
 serve(async (req: Request) => {
@@ -117,35 +141,66 @@ serve(async (req: Request) => {
                 return jsonResponse({ error: 'Batch size exceeds limit (max 50)' }, 400, corsHeaders)
             }
 
-            // Procesar requests en paralelo
+            // Procesar solicitudes en paralelo
             const results = await Promise.allSettled(
                 body.requests.map(async (request, index) => {
-                    if (!request.meeting_id || !request.schedule_for) {
+                    // Determinar acción: request.action > body.action > 'update' (por defecto)
+                    const action = request.action || (body as BatchRequest).action || 'update'
+
+                    if (action === 'update' && (!request.meeting_id || !request.schedule_for)) {
                         return {
                             meeting_id: request.meeting_id || 'unknown',
                             success: false,
-                            error: 'meeting_id and schedule_for required'
+                            error: 'meeting_id and schedule_for required for update'
+                        }
+                    }
+                    if (action === 'create' && !request.topic) {
+                        return {
+                            meeting_id: 'new',
+                            success: false,
+                            error: 'topic required for create'
                         }
                     }
 
                     try {
-                        const patchBody = buildZoomPatchBody(request)
+                        let url = ''
+                        let method = ''
+                        let apiBody = {}
 
-                        const zoomResponse = await fetch(
-                            `${ZOOM_API_BASE}/meetings/${request.meeting_id}`,
-                            {
-                                method: 'PATCH',
-                                headers: {
-                                    'Authorization': `Bearer ${accessToken}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(patchBody)
-                            }
+                        if (action === 'create') {
+                            url = `${ZOOM_API_BASE}/users/me/meetings`
+                            method = 'POST'
+                            apiBody = buildZoomCreateBody(request)
+                        } else {
+                            url = `${ZOOM_API_BASE}/meetings/${request.meeting_id}`
+                            method = 'PATCH'
+                            apiBody = buildZoomPatchBody(request)
+                        }
+
+                        const zoomResponse = await fetch(url, {
+                            method,
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(apiBody)
+                        }
                         )
 
-                        // Zoom devuelve 204 No Content en éxito
-                        if (zoomResponse.status === 204 || zoomResponse.ok) {
-                            return { meeting_id: request.meeting_id, success: true }
+                        // 201 Creado para POST, 204 Sin Contenido para PATCH
+                        if (zoomResponse.status === 201 || zoomResponse.status === 204 || zoomResponse.ok) {
+                            // Para crear, retornar el nuevo ID
+                            let resultData = {}
+                            if (action === 'create') {
+                                try {
+                                    resultData = await zoomResponse.json()
+                                } catch { }
+                            }
+                            return {
+                                meeting_id: request.meeting_id || (resultData as any).id || 'unknown',
+                                success: true,
+                                data: resultData
+                            }
                         }
 
                         // Error de Zoom
@@ -155,7 +210,7 @@ serve(async (req: Request) => {
                             errorMsg = errorData.message || errorMsg
                         } catch { /* ignore parse error */ }
 
-                        return { meeting_id: request.meeting_id, success: false, error: errorMsg }
+                        return { meeting_id: request.meeting_id || 'unknown', success: false, error: errorMsg }
                     } catch (err) {
                         return {
                             meeting_id: request.meeting_id,
@@ -192,7 +247,7 @@ serve(async (req: Request) => {
             }, 200, corsHeaders)
         }
 
-        // ========== MODO SINGLE ==========
+        // ========== MODO INDIVIDUAL ==========
         if (!body.meeting_id || !body.schedule_for) {
             return jsonResponse({ error: 'meeting_id and schedule_for required' }, 400, corsHeaders)
         }

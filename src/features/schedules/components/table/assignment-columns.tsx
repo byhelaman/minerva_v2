@@ -2,7 +2,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { Schedule } from "@schedules/utils/excel-parser";
 import { Checkbox } from "@/components/ui/checkbox";
-import { MoreHorizontal, Hand, RotateCcw } from "lucide-react";
+import { MoreHorizontal, Hand, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ZoomMeetingCandidate } from "@/features/matching/services/matcher";
@@ -177,15 +177,24 @@ export const getAssignmentColumns = (
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                    disabled={row.original.status === 'not_found'}
+                                    disabled={row.original.status === 'not_found' || row.original.status === 'ambiguous'}
                                     onClick={() => {
                                         if (onManualModeToggle) {
                                             onManualModeToggle(row.original.id);
                                         }
                                     }}
                                 >
-                                    <Hand />
-                                    Manual mode
+                                    {row.original.manualMode ? (
+                                        <>
+                                            <XCircle />
+                                            Disable manual
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Hand />
+                                            Enable manual
+                                        </>
+                                    )}
                                 </DropdownMenuItem>
                                 {row.original.manualMode && (
                                     <DropdownMenuItem

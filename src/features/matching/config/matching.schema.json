@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "minerva-matching-config",
+  "title": "Minerva Matching Configuration",
+  "description": "Configuración del sistema de matching entre schedules y meetings de Zoom",
+  "type": "object",
+  "required": [
+    "scoring",
+    "tokens",
+    "irrelevantWords"
+  ],
+  "properties": {
+    "scoring": {
+      "type": "object",
+      "properties": {
+        "baseScore": {
+          "type": "number",
+          "default": 100,
+          "description": "Puntuación inicial antes de aplicar penalizaciones"
+        },
+        "penalties": {
+          "type": "object",
+          "description": "Penalizaciones (valores negativos). Score final = baseScore + sum(penalties)",
+          "properties": {
+            "CRITICAL_TOKEN_MISMATCH": {
+              "type": "number",
+              "default": -100,
+              "description": "Tipos de programa mutuamente excluyentes.  Ej:  TRIO vs DUO"
+            },
+            "LEVEL_CONFLICT": {
+              "type": "number",
+              "default": -100,
+              "description": "Niveles explícitos diferentes. Ej: L3 vs L5"
+            },
+            "COMPANY_CONFLICT": {
+              "type": "number",
+              "default": -100,
+              "description": "Empresas/clientes diferentes. Ej: SCOTIABANK vs HAYDUK"
+            },
+            "PROGRAM_VS_PERSON": {
+              "type": "number",
+              "default": -80,
+              "description": "Query busca programa pero topic es persona.  Ej: 'TRIO ADVANCED' vs 'JUAN GARCIA'"
+            },
+            "WEAK_MATCH": {
+              "type": "number",
+              "default": -80,
+              "description": "Ningún token distintivo coincide entre query y topic"
+            },
+            "GROUP_NUMBER_CONFLICT": {
+              "type": "number",
+              "default": -80,
+              "description": "Números de grupo diferentes. Ej: CH 1 vs CH 3"
+            },
+            "MISSING_TOKEN": {
+              "type": "number",
+              "default": -70,
+              "description": "Falta token distintivo importante en el topic"
+            },
+            "ORPHAN_NUMBER_WITH_SIBLINGS": {
+              "type": "number",
+              "default": -60,
+              "description": "Topic tiene número no solicitado y existen otras versiones"
+            },
+            "ORPHAN_LEVEL_WITH_SIBLINGS": {
+              "type": "number",
+              "default": -60,
+              "description": "Topic tiene nivel no solicitado y existen otros niveles"
+            },
+            "STRUCTURAL_TOKEN_MISSING": {
+              "type": "number",
+              "default": -50,
+              "description": "Token estructural (TRIO/DUO/CH) en query pero no en topic"
+            },
+            "NUMERIC_CONFLICT": {
+              "type": "number",
+              "default": -30,
+              "description": "Números genéricos no coinciden"
+            },
+            "MISSING_NUMERIC_TOKEN": {
+              "type": "number",
+              "default": -20,
+              "description": "Falta número suelto en el topic"
+            },
+            "MISSING_TOKEN_EXTRA_INFO": {
+              "type": "number",
+              "default": -10,
+              "description": "Query tiene tokens extra pero topic está cubierto"
+            },
+            "LEVEL_MISMATCH_IGNORED": {
+              "type": "number",
+              "default": -10,
+              "description": "Niveles no coinciden pero se ignoró por configuración"
+            }
+          }
+        },
+        "thresholds": {
+          "type": "object",
+          "properties": {
+            "HIGH_CONFIDENCE": {
+              "type": "number",
+              "default": 70,
+              "description": "Score mínimo para match confiable sin revisión"
+            },
+            "MEDIUM_CONFIDENCE": {
+              "type": "number",
+              "default": 50,
+              "description": "Score mínimo para match con advertencia"
+            },
+            "MINIMUM": {
+              "type": "number",
+              "default": 30,
+              "description": "Score mínimo para considerar candidato"
+            },
+            "AMBIGUITY_DIFF": {
+              "type": "number",
+              "default": 15,
+              "description": "Diferencia máxima entre candidatos para marcar ambigüedad"
+            },
+            "FUSE_MAX_SCORE": {
+              "type": "number",
+              "default": 0.3,
+              "description": "Score máximo de Fuse. js (0=perfecto, 1=nada)"
+            }
+          }
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "properties": {
+        "structural": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tokens estructurales.  NO se eliminan en normalización",
+          "default": [
+            "duo",
+            "trio",
+            "ch",
+            "bvd",
+            "bvp",
+            "bvs",
+            "privado"
+          ]
+        },
+        "programTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tipos de programa mutuamente excluyentes",
+          "default": [
+            "trio",
+            "duo",
+            "ch",
+            "bvd",
+            "bvp",
+            "bvs"
+          ]
+        },
+        "synonyms": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "Grupos de sinónimos.  Tokens del mismo grupo no generan conflicto",
+          "default": [
+            [
+              "duo",
+              "bvd"
+            ],
+            [
+              "privado",
+              "bvp"
+            ]
+          ]
+        },
+        "programTypeGroups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tokens": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "tokens"
+            ]
+          },
+          "description": "Grupos de tipos de programa para detección de conflictos"
+        }
+      }
+    },
+    "irrelevantWords": {
+      "type": "object",
+      "description": "Palabras a eliminar durante normalización",
+      "properties": {
+        "modalities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Modalidades de clase",
+          "default": [
+            "online",
+            "presencial",
+            "virtual",
+            "hibrido",
+            "remoto",
+            "f2f",
+            "zoom"
+          ]
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Idiomas"
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Descriptores de nivel genéricos"
+        },
+        "programTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Etiquetas de programa"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Códigos de país"
+        },
+        "connectors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Palabras conectoras"
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Patrones regex"
+        }
+      }
+    }
+  }
+}

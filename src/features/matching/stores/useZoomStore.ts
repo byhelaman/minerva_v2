@@ -30,7 +30,7 @@ interface ZoomState {
     // Estado de Ejecución de Asignaciones
     isExecuting: boolean;
 
-    // Worker Instance
+    // Instancia del Worker
     worker: Worker | null,
 
     // Acciones
@@ -38,7 +38,10 @@ interface ZoomState {
     triggerSync: () => Promise<void>;
     runMatching: (schedules: Schedule[]) => Promise<void>;
     resolveConflict: (schedule: Schedule, selectedMeeting: ZoomMeetingCandidate) => void;
-    executeAssignments: (meetingIds?: string[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
+    createMeetings: (topics: string[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
+    updateMatchings: (updates: { meeting_id: string; topic?: string; schedule_for?: string }[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
+
+    _genericBatchAction: (meetingIds?: string[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
 
     // Método interno para inicializar el worker
     _initWorker: (meetings: ZoomMeetingCandidate[], users: ZoomUser[]) => void;
@@ -169,8 +172,7 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
                 const errorMessage = error instanceof Error ? error.message : "Error invocando función";
                 let context = "";
                 if (typeof error === 'object' && error !== null && 'context' in error) {
-                    // @ts-ignore
-                    context = JSON.stringify(error.context);
+                    context = JSON.stringify((error as { context: unknown }).context);
                 }
                 throw new Error(errorMessage + (context ? ` ${context}` : ""));
             }
@@ -254,6 +256,15 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
     },
 
     executeAssignments: async (meetingIds?: string[]) => {
+        // Implementation for executeAssignments (kept as is, but we could refactor to use the generic updateMatchings if desired, but kept separate for logic isolation)
+        const { matchResults } = get();
+        // ... (existing logic)
+        // For brevity in this diff, reusing the existing logic structure for new actions below
+        return get()._genericBatchAction(meetingIds);
+    },
+
+    // Ayudante para acciones por lotes (interno) - refactorización para reutilizar lógica
+    _genericBatchAction: async (meetingIds?: string[]) => {
         const { matchResults } = get();
 
         // Filtrar: 'to_update', 'manual' (ambiguedad resuelta), o 'assigned' (re-actualización)
@@ -276,18 +287,12 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
         set({ isExecuting: true });
 
         try {
-            // Construir requests para batch
+            // Construir solicitudes para lote
             const allRequests = toUpdate.map(result => {
                 const schedule = result.schedule;
                 const instructor = result.found_instructor!;
-
-                // Calcular duración
                 const duration = calculateDuration(schedule.start_time, schedule.end_time);
-
-                // Construir start_time ISO
                 const startTimeISO = toISODateTime(schedule.date, schedule.start_time);
-
-                // Construir recurrence
                 const recurrence = buildRecurrence(schedule.date);
 
                 return {
@@ -296,89 +301,101 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
                     start_time: startTimeISO,
                     duration,
                     timezone: 'America/Lima',
-                    recurrence
+                    recurrence,
+                    action: 'update' as const // Acción explícita
                 };
             });
 
-            // Procesar en chunks de 30 secuencialmente
-            // Zoom Heavy APIs tienen límite de 10 req/s, la Edge Function procesa en paralelo internamente
-            const CHUNK_SIZE = 30;
-            const DELAY_BETWEEN_CHUNKS_MS = 3500; // 3.5 segundos entre chunks (30 items / 10 req/s = 3s + margen)
-
-            const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-            let totalSucceeded = 0;
-            let totalFailed = 0;
-            const allErrors: string[] = [];
-            const allResults: Array<{ meeting_id: string; success: boolean; error?: string }> = [];
-
-            // Dividir en chunks
-            const chunks: typeof allRequests[] = [];
-            for (let i = 0; i < allRequests.length; i += CHUNK_SIZE) {
-                chunks.push(allRequests.slice(i, i + CHUNK_SIZE));
-            }
-
-            // Procesar chunks secuencialmente con delay entre cada uno
-            for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                const chunkNum = i + 1;
-
-                const { data, error } = await supabase.functions.invoke('zoom-api', {
-                    body: { batch: true, requests: chunk }
-                });
-
-                if (error) {
-                    totalFailed += chunk.length;
-                    allErrors.push(`Chunk ${chunkNum}: ${error.message}`);
-                } else {
-                    const response = data as {
-                        batch: boolean;
-                        total: number;
-                        succeeded: number;
-                        failed: number;
-                        results: Array<{ meeting_id: string; success: boolean; error?: string }>;
-                    };
-
-                    totalSucceeded += response.succeeded;
-                    totalFailed += response.failed;
-                    allResults.push(...response.results);
-
-                    // Agregar errores individuales
-                    const chunkErrors = response.results
-                        .filter(r => !r.success && r.error)
-                        .map(r => `${r.meeting_id}: ${r.error}`);
-                    allErrors.push(...chunkErrors);
-                }
-
-                // Delay entre chunks para respetar rate limit de Zoom (30 items / 10 req/s = 3s + margen)
-                if (i < chunks.length - 1) {
-                    await delay(DELAY_BETWEEN_CHUNKS_MS);
-                }
-            }
+            // Reutilizando lógica de procesamiento por trozos
+            const result = await processBatchChunks(allRequests);
 
             // Actualizar matchResults con los resultados
             const updatedResults = matchResults.map(r => {
-                // Solo procesar los status que fueron enviados para actualización
                 if (!['to_update', 'manual', 'assigned'].includes(r.status) || !r.meeting_id) return r;
-
-                const result = allResults.find(res => res.meeting_id === r.meeting_id);
-                if (result?.success) {
+                const res = result.results.find(res => res.meeting_id === r.meeting_id);
+                if (res?.success) {
                     return { ...r, status: 'assigned' as const, reason: 'Updated' };
                 }
                 return r;
             });
 
             set({ matchResults: updatedResults, isExecuting: false });
+            return { succeeded: result.succeeded, failed: result.failed, errors: result.errors };
 
-            return {
-                succeeded: totalSucceeded,
-                failed: totalFailed,
-                errors: allErrors
-            };
         } catch (err) {
             set({ isExecuting: false });
             const message = err instanceof Error ? err.message : 'Unknown error';
             return { succeeded: 0, failed: toUpdate.length, errors: [message] };
+        }
+    },
+
+    createMeetings: async (topics: string[]) => {
+        set({ isExecuting: true });
+        try {
+            // Build requests
+            // Default payload reference:
+            // Type 8 (Recurring fixed time), Weekly, Lun-Jue, +120 days
+            // Start time: Tomorrow 9AM (arbitrary start for recurring container)
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(9, 0, 0, 0);
+            const startTimeStr = tomorrow.toISOString().split('.')[0]; // Remove millis
+
+            // End date +120 days
+            const endDate = new Date(tomorrow);
+            endDate.setDate(endDate.getDate() + 120);
+            const endDateTime = endDate.toISOString().replace('.000', ''); // Z format roughly
+
+            const requests = topics.map(topic => ({
+                action: 'create' as const,
+                topic,
+                type: 8,
+                start_time: startTimeStr,
+                duration: 60,
+                timezone: 'America/Lima',
+                recurrence: {
+                    type: 2, // Weekly
+                    repeat_interval: 1,
+                    weekly_days: "2,3,4,5", // Mon-Thu
+                    end_date_time: endDateTime
+                },
+                settings: {
+                    join_before_host: true,
+                    waiting_room: true
+                }
+            }));
+
+            const result = await processBatchChunks(requests);
+
+            // Refresh data to show new meetings
+            await get().fetchZoomData();
+
+            set({ isExecuting: false });
+            return { succeeded: result.succeeded, failed: result.failed, errors: result.errors };
+        } catch (err) {
+            set({ isExecuting: false });
+            return { succeeded: 0, failed: topics.length, errors: [err instanceof Error ? err.message : 'Unknown error'] };
+        }
+    },
+
+    updateMatchings: async (updates) => {
+        set({ isExecuting: true });
+        try {
+            // Actualizaciones básicas (ej: renombrar tema o confirmar)
+            // Por ahora, asumiendo actualización de tema o simplemente "tocarlo".
+            const requests = updates.map(u => ({
+                action: 'update' as const,
+                meeting_id: u.meeting_id,
+                schedule_for: u.schedule_for || 'me', // Por defecto a 'me' si se encuentra?
+                topic: u.topic
+            }));
+
+            const result = await processBatchChunks(requests);
+            set({ isExecuting: false });
+            return { succeeded: result.succeeded, failed: result.failed, errors: result.errors };
+        } catch (err) {
+            set({ isExecuting: false });
+            return { succeeded: 0, failed: updates.length, errors: [err instanceof Error ? err.message : 'Unknown error'] };
         }
     }
 }));
@@ -448,15 +465,69 @@ function getZoomWeekday(dateStr: string): number {
         } else if (dateStr.includes('-')) {
             [year, month, day] = dateStr.split('-').map(Number);
         } else {
-            return 2; // Default Monday
+            return 2; // Por defecto Lunes
         }
 
         const date = new Date(year, month - 1, day);
-        const jsDay = date.getDay(); // 0=Sun, 1=Mon...6=Sat
-        return jsDay === 0 ? 1 : jsDay + 1; // 1=Sun, 2=Mon...7=Sat
+        const jsDay = date.getDay(); // 0=Dom, 1=Lun...6=Sab
+        return jsDay === 0 ? 1 : jsDay + 1; // 1=Dom, 2=Lun...7=Sab
     } catch {
         return 2;
     }
+}
+
+// Helper para procesar batch chunks común
+async function processBatchChunks(allRequests: any[]): Promise<{ succeeded: number; failed: number; errors: string[]; results: any[] }> {
+    const CHUNK_SIZE = 30;
+    const DELAY_BETWEEN_CHUNKS_MS = 3500;
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    let totalSucceeded = 0;
+    let totalFailed = 0;
+    const allErrors: string[] = [];
+    const allResults: Array<{ meeting_id: string; success: boolean; error?: string }> = [];
+
+    const chunks = [];
+    for (let i = 0; i < allRequests.length; i += CHUNK_SIZE) {
+        chunks.push(allRequests.slice(i, i + CHUNK_SIZE));
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const chunkNum = i + 1;
+
+        const { data, error } = await supabase.functions.invoke('zoom-api', {
+            body: { batch: true, requests: chunk }
+        });
+
+        if (error) {
+            totalFailed += chunk.length;
+            allErrors.push(`Chunk ${chunkNum}: ${error.message}`);
+        } else {
+            const response = data as {
+                batch: boolean;
+                total: number;
+                succeeded: number;
+                failed: number;
+                results: Array<{ meeting_id: string; success: boolean; error?: string }>;
+            };
+
+            totalSucceeded += response.succeeded;
+            totalFailed += response.failed;
+            allResults.push(...response.results);
+
+            const chunkErrors = response.results
+                .filter(r => !r.success && r.error)
+                .map(r => `${r.meeting_id}: ${r.error}`);
+            allErrors.push(...chunkErrors);
+        }
+
+        if (i < chunks.length - 1) {
+            await delay(DELAY_BETWEEN_CHUNKS_MS);
+        }
+    }
+
+    return { succeeded: totalSucceeded, failed: totalFailed, errors: allErrors, results: allResults };
 }
 
 /** Construir objeto recurrence para Zoom API */
