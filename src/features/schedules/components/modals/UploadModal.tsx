@@ -25,6 +25,8 @@ interface UploadModalProps {
 }
 
 const MAX_FILES = 5;
+const MAX_FILE_SIZE_MB = 10; // 10 MB limit per file for security
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export function UploadModal({
     open,
@@ -41,6 +43,7 @@ export function UploadModal({
             const existingNames = new Set(selectedFiles.map((f) => f.name));
             let duplicateCount = 0;
             let invalidCount = 0;
+            let oversizedCount = 0;
 
             const validNewFiles: FileInfo[] = [];
 
@@ -53,6 +56,11 @@ export function UploadModal({
                     invalidCount++;
                     continue;
                 }
+                // Security: Prevent DoS from excessively large files
+                if (file.size > MAX_FILE_SIZE_BYTES) {
+                    oversizedCount++;
+                    continue;
+                }
                 validNewFiles.push({ file, name: file.name });
             }
 
@@ -62,6 +70,11 @@ export function UploadModal({
             if (invalidCount > 0) {
                 toast.error(
                     `${invalidCount} invalid file(s) rejected. Only .xlsx files allowed`
+                );
+            }
+            if (oversizedCount > 0) {
+                toast.error(
+                    `${oversizedCount} file(s) rejected. Maximum file size is ${MAX_FILE_SIZE_MB} MB`
                 );
             }
 

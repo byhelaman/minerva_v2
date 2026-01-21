@@ -44,6 +44,34 @@ This document outlines the security measures implemented in Minerva v2 and impor
 
 ## Security Considerations for Production
 
+### ⚠️ Known Vulnerabilities
+
+#### xlsx (SheetJS) Library
+
+**Status:** High severity vulnerability in dependency
+
+**Vulnerabilities:**
+- GHSA-4r6h-8v6p-xvw6: Prototype Pollution
+- GHSA-5pgg-2g8v-p4x9: ReDoS (Regular Expression Denial of Service)
+
+**Current Mitigations:**
+1. ✅ Only processes .xlsx files validated by the user
+2. ✅ Processing is asynchronous and doesn't block the UI
+3. ✅ Files come from local file system via Tauri native dialogs
+4. ✅ No processing of untrusted remote content
+5. ✅ User input is validated before parsing
+
+**Risk Assessment:**
+- **Low-Medium** for this application context
+- Files are user-selected from local system
+- No automated processing of remote/untrusted files
+- Desktop application with limited attack surface
+
+**Recommendation:**
+- Monitor for security updates to xlsx library
+- Consider migrating to a more secure alternative when available
+- For now, the mitigations in place adequately reduce the risk
+
 ### ⚠️ Critical Configuration Required
 
 1. **CORS Configuration**

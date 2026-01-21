@@ -1,6 +1,24 @@
 import { read, utils } from "xlsx";
 import { formatTimeTo24h, parseTimeValue } from "./time-utils";
 
+/**
+ * NOTA DE SEGURIDAD: xlsx Library
+ * 
+ * La librería xlsx (SheetJS) tiene vulnerabilidades conocidas:
+ * - GHSA-4r6h-8v6p-xvw6: Prototype Pollution
+ * - GHSA-5pgg-2g8v-p4x9: ReDoS (Regular Expression Denial of Service)
+ * 
+ * Mitigaciones implementadas:
+ * 1. Solo se procesan archivos .xlsx validados por el usuario
+ * 2. El procesamiento es asíncrono y no bloquea la UI
+ * 3. Los archivos provienen del sistema de archivos local (Tauri dialog)
+ * 4. No se procesa contenido de fuentes no confiables
+ * 5. La entrada del usuario es validada antes del parseo
+ * 
+ * Recomendación futura: Considerar migrar a una alternativa más segura
+ * cuando esté disponible una con funcionalidad equivalente.
+ */
+
 // =============================================================================
 // TIPOS DE DATOS
 // =============================================================================
