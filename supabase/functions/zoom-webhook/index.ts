@@ -14,10 +14,12 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 // SEGURIDAD: Restringir CORS - los webhooks vienen de servidores de Zoom, no de navegadores
 // Las solicitudes servidor-a-servidor (sin header Origin) siempre están permitidas
 // Las solicitudes de navegadores están restringidas a orígenes conocidos
+// ⚠️ PRODUCCIÓN: Agrega tu dominio de producción aquí antes de deployar
 const ALLOWED_ORIGINS = [
     'http://localhost:1420',
     'tauri://localhost',
     'http://tauri.localhost',
+    // TODO: Agregar dominio de producción aquí
 ]
 
 function getCorsHeaders(req: Request) {

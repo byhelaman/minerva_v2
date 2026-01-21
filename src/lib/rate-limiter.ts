@@ -6,6 +6,14 @@
  * - El lockout se incrementa con cada bloqueo consecutivo
  * - Se resetea después de un login exitoso
  * - Estado persistido en localStorage para sobrevivir recargas
+ * 
+ * ADVERTENCIA DE SEGURIDAD:
+ * Este rate limiter es SOLO del lado del cliente y puede ser evadido
+ * limpiando localStorage. Para producción, se DEBE implementar rate limiting
+ * del lado del servidor (en Supabase Edge Functions o mediante un proxy).
+ * 
+ * Esta implementación client-side es una capa adicional de UX y protección básica,
+ * NO debe ser la única defensa contra ataques de fuerza bruta.
  */
 
 const MAX_ATTEMPTS = 5;

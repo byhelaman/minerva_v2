@@ -78,14 +78,15 @@ export function ForgotPasswordDialog({
         setIsLoading(true);
         try {
             const { error } = await sendResetPasswordEmail(email);
+            // Consistent messaging to prevent email enumeration
+            setResendCountdown(30);
             if (error) {
-                toast.error(error.message);
-            } else {
-                setResendCountdown(30);
-                toast.success("Verification code resent");
+                console.error("Resend code error:", error.message);
             }
+            toast.success("Verification code resent");
         } catch (error) {
-            toast.error("Failed to resend code");
+            console.error("Resend code exception:", error);
+            toast.error("Unable to resend code. Please try again later");
         } finally {
             setIsLoading(false);
         }
@@ -134,19 +135,20 @@ export function ForgotPasswordDialog({
         setIsLoading(true);
         try {
             const { error } = await sendResetPasswordEmail(data.email);
+            // Security: Don't reveal if email exists to prevent user enumeration
+            // Always show success message regardless of whether email exists
+            setEmail(data.email);
+            setStep("otp");
+            setResendCountdown(30);
             if (error) {
-                // Security: don't reveal if email exists, but showing error for dev/UX testing
-                // In prod, usually we say "If account exists..."
-                // For this internal app, showing error is helpful.
-                toast.error(error.message);
-            } else {
-                setEmail(data.email);
-                setStep("otp");
-                setResendCountdown(30);
-                toast.success("Verification code sent to your email");
+                // Log error for debugging but don't expose to user
+                console.error("Password reset error:", error.message);
             }
+            toast.success("If an account exists with this email, a verification code has been sent");
         } catch (error) {
-            toast.error("Failed to send code");
+            // Generic error message to prevent enumeration
+            console.error("Password reset exception:", error);
+            toast.error("Unable to process request. Please try again later");
         } finally {
             setIsLoading(false);
         }

@@ -22,6 +22,14 @@ if (!supabaseUrl || !supabaseKey) {
  * 1. Se carga la sesión desde localStorage
  * 2. Si el JWT expiró pero el refresh token es válido, se renueva automáticamente
  * 3. Si el refresh token también expiró, el usuario debe re-autenticarse
+ * 
+ * NOTA DE SEGURIDAD:
+ * Los tokens se almacenan en localStorage. Si bien esto es estándar para aplicaciones
+ * de escritorio (Tauri), se debe considerar que:
+ * - XSS puede comprometer estos tokens
+ * - Implementar Content Security Policy (CSP) estricto
+ * - Validar y sanitizar toda entrada de usuario
+ * - Mantener dependencias actualizadas para prevenir XSS
  */
 export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {

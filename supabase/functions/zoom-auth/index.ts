@@ -12,11 +12,14 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // SEGURIDAD: Restringir orígenes CORS
-// Agrega tu dominio de producción u orígenes específicos de Tauri aquí
+// ⚠️ PRODUCCIÓN: Agrega tu dominio de producción aquí antes de deployar
+// Para aplicaciones Tauri, los orígenes pueden incluir custom protocols
+// Ejemplo: 'https://tudominio.com', 'tauri://localhost'
 const ALLOWED_ORIGINS = [
     'http://localhost:1420',
     'tauri://localhost',
     'http://tauri.localhost',
+    // TODO: Agregar dominio de producción aquí
 ]
 
 function getCorsHeaders(req: Request) {

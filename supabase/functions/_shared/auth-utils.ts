@@ -59,6 +59,8 @@ export async function verifyUserRole(
  * Verifica que el request tiene una clave interna válida.
  * Útil para cronjobs y llamadas server-to-server.
  * 
+ * Usa comparación de tiempo constante para prevenir timing attacks.
+ * 
  * @param req - Request con header x-internal-key
  * @returns true si la clave es válida
  */
@@ -67,7 +69,17 @@ export function verifyInternalKey(req: Request): boolean {
     if (!INTERNAL_API_KEY) return false
 
     const providedKey = req.headers.get('x-internal-key')
-    return providedKey === INTERNAL_API_KEY
+    if (!providedKey) return false
+
+    // Constant-time comparison to prevent timing attacks
+    if (providedKey.length !== INTERNAL_API_KEY.length) return false
+    
+    let match = 0
+    for (let i = 0; i < INTERNAL_API_KEY.length; i++) {
+        match |= providedKey.charCodeAt(i) ^ INTERNAL_API_KEY.charCodeAt(i)
+    }
+    
+    return match === 0
 }
 
 /**
