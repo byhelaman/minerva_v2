@@ -152,6 +152,11 @@ BEGIN
     IF target_level >= 100 THEN
         RAISE EXCEPTION 'Permission denied: cannot delete another super_admin';
     END IF;
+
+    -- SEGURIDAD: No se puede eliminar usuarios con nivel >= al tuyo
+    IF target_level >= caller_level THEN
+        RAISE EXCEPTION 'Permission denied: cannot delete user with equal or higher privileges';
+    END IF;
     
     -- Eliminar de auth.users (cascadea a profiles)
     DELETE FROM auth.users WHERE id = target_user_id;

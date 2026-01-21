@@ -3,7 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { verifyUserRole, ROLES } from '../_shared/auth-utils.ts'
+import { verifyPermission } from '../_shared/auth-utils.ts'
 
 const ZOOM_CLIENT_ID = Deno.env.get('ZOOM_CLIENT_ID')!
 const ZOOM_CLIENT_SECRET = Deno.env.get('ZOOM_CLIENT_SECRET')!
@@ -81,8 +81,8 @@ serve(async (req: Request) => {
 async function handleInit(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verificación RBAC
-    const user = await verifyUserRole(req, supabase, ROLES.ADMIN_AND_ABOVE)
+    // Verificación RBAC (Permiso: settings.edit)
+    const user = await verifyPermission(req, supabase, 'settings.edit')
 
     // Crear estado
     const { data: state, error: stateError } = await supabase.rpc('create_oauth_state', {
@@ -181,8 +181,8 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
 async function handleStatus(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verificación RBAC (Solo admins pueden ver estado)
-    await verifyUserRole(req, supabase, ROLES.ADMIN_AND_ABOVE)
+    // Verificación RBAC (Permiso: settings.edit)
+    await verifyPermission(req, supabase, 'settings.edit')
 
     // Seleccionamos campos no sensibles. NO seleccionamos IDs de secretos aquí.
     const { data: account, error } = await supabase
@@ -213,8 +213,8 @@ async function handleStatus(req: Request, corsHeaders: Record<string, string>): 
 async function handleDisconnect(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verificación RBAC - CRÍTICO
-    await verifyUserRole(req, supabase, ROLES.ADMIN_AND_ABOVE)
+    // Verificación RBAC (Permiso: settings.edit)
+    await verifyPermission(req, supabase, 'settings.edit')
 
     // Eliminar cuenta. ¿Integridad referencial o limpieza manual de secretos?
     // Por ahora, solo borramos la cuenta. Los secretos quedan en vault sin referencia.

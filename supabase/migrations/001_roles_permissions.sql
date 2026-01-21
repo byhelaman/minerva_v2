@@ -34,6 +34,7 @@ CREATE TABLE public.role_permissions (
 INSERT INTO public.roles (name, description, hierarchy_level) VALUES
     ('super_admin', 'Full system control, Zoom integration', 100),
     ('admin', 'Manage users and system settings', 80),
+    ('moderator', 'Can assign users and manage Zoom links', 60),
     ('operator', 'Work with schedules and Zoom data', 50),
     ('viewer', 'Read-only access to own schedules', 10);
 
@@ -42,15 +43,16 @@ INSERT INTO public.permissions (name, description, min_role_level) VALUES
     -- Schedules
     ('schedules.read', 'View own schedules', 10),
     ('schedules.write', 'Upload and edit schedules', 50),
-    -- Zoom
-    ('zoom.search', 'Search Zoom users', 50),
-    ('zoom.links', 'Create and manage Zoom links', 50),
+    -- Meetings (Zoom)
+    ('meetings.search', 'Search Zoom meeting history', 60),
+    ('meetings.create', 'Create and edit Zoom links', 60),
+    ('meetings.assign', 'Assign Zoom links to schedules', 60),
     -- Users
-    ('users.read', 'View user list', 80),
-    ('users.write', 'Manage user roles', 80),
+    ('users.view', 'View list of users', 80),
+    ('users.manage', 'Create, delete, and change user roles', 80),
     -- Settings
-    ('settings.read', 'View system settings', 80),
-    ('settings.write', 'Modify system settings and Zoom integration', 100);
+    ('settings.view', 'View system settings', 80),
+    ('settings.edit', 'Modify system settings', 100);
 
 -- Role-Permission mappings (explicit for admin UI)
 INSERT INTO public.role_permissions (role, permission) VALUES
@@ -59,22 +61,28 @@ INSERT INTO public.role_permissions (role, permission) VALUES
     -- operator (includes viewer permissions)
     ('operator', 'schedules.read'),
     ('operator', 'schedules.write'),
-    ('operator', 'zoom.search'),
-    ('operator', 'zoom.links'),
+    -- moderator (includes operator permissions + users.view/manage partially)
+    ('moderator', 'schedules.read'),
+    ('moderator', 'schedules.write'),
+    ('moderator', 'meetings.search'),
+    ('moderator', 'meetings.create'),
+    ('moderator', 'meetings.assign'),
     -- admin (includes operator permissions)
     ('admin', 'schedules.read'),
     ('admin', 'schedules.write'),
-    ('admin', 'zoom.search'),
-    ('admin', 'zoom.links'),
-    ('admin', 'users.read'),
-    ('admin', 'users.write'),
-    ('admin', 'settings.read'),
+    ('admin', 'meetings.search'),
+    ('admin', 'meetings.create'),
+    ('admin', 'meetings.assign'),
+    ('admin', 'users.view'),
+    ('admin', 'users.manage'),
+    ('admin', 'settings.view'),
     -- super_admin (all permissions)
     ('super_admin', 'schedules.read'),
     ('super_admin', 'schedules.write'),
-    ('super_admin', 'zoom.search'),
-    ('super_admin', 'zoom.links'),
-    ('super_admin', 'users.read'),
-    ('super_admin', 'users.write'),
-    ('super_admin', 'settings.read'),
-    ('super_admin', 'settings.write');
+    ('super_admin', 'meetings.search'),
+    ('super_admin', 'meetings.create'),
+    ('super_admin', 'meetings.assign'),
+    ('super_admin', 'users.view'),
+    ('super_admin', 'users.manage'),
+    ('super_admin', 'settings.view'),
+    ('super_admin', 'settings.edit');

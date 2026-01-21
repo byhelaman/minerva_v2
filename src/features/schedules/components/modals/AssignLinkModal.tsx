@@ -465,8 +465,11 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                                     // El store ya hizo el refresh con delay de webhook
                                     // Solo necesitamos re-ejecutar el matching con los datos frescos
                                     setIsMatching(true);
-                                    await runMatching(schedules);
-                                    setIsMatching(false);
+                                    try {
+                                        await runMatching(schedules);
+                                    } finally {
+                                        setIsMatching(false);
+                                    }
                                 }
                                 if (result.failed > 0) {
                                     toast.error(`${result.failed} meetings failed to update`);

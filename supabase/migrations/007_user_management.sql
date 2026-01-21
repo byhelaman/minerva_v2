@@ -24,7 +24,6 @@ AS $$
 DECLARE
     caller_level int;
 BEGIN
-    -- Verificar que el usuario tiene permiso admin
     caller_level := COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0);
     
     -- 1. Verificar permiso de ver usuarios (users.view)
@@ -83,7 +82,6 @@ DECLARE
     target_current_level int;
     new_role_level int;
 BEGIN
-    -- Obtener info del caller
     caller_id := auth.uid();
     caller_level := COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0);
     
@@ -153,7 +151,6 @@ DECLARE
     caller_id uuid;
     target_level int;
 BEGIN
-    -- Obtener info del caller
     caller_id := auth.uid();
     caller_level := COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0);
     
@@ -181,6 +178,11 @@ BEGIN
     -- No se puede eliminar a otro super_admin
     IF target_level >= 100 THEN
         RAISE EXCEPTION 'Permission denied: cannot delete another super_admin';
+    END IF;
+
+    -- SEGURIDAD: No se puede eliminar usuarios con nivel >= al tuyo
+    IF target_level >= caller_level THEN
+        RAISE EXCEPTION 'Permission denied: cannot delete user with equal or higher privileges';
     END IF;
     
     -- Eliminar de auth.users (cascadea a profiles)

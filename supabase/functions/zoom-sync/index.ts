@@ -7,7 +7,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getValidAccessToken } from '../_shared/zoom-token-utils.ts'
-import { verifyAccess, ROLES } from '../_shared/auth-utils.ts'
+import { verifyAccess } from '../_shared/auth-utils.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -39,8 +39,8 @@ serve(async (req: Request) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-  // Verificación de acceso: usuario super_admin O clave interna
-  const isAuthorized = await verifyAccess(req, supabase, ROLES.SUPER_ADMIN_ONLY)
+  // Verificación de acceso: usuario con settings.edit O clave interna
+  const isAuthorized = await verifyAccess(req, supabase, 'settings.edit')
 
   if (!isAuthorized) {
     return new Response(

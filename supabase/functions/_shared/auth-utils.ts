@@ -1,7 +1,7 @@
 // Supabase Edge Function: Shared Auth Utilities
 // Funciones compartidas de autenticación y autorización para Edge Functions
 
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Roles permitidos por nivel de acceso
 export const ROLES = {
@@ -71,23 +71,23 @@ export function verifyInternalKey(req: Request): boolean {
 }
 
 /**
- * Verifica autorización combinada: usuario admin O clave interna.
+ * Verifica autorización combinada: usuario con permiso O clave interna.
  * 
  * @param req - Request
  * @param supabase - Cliente Supabase
- * @param allowedRoles - Roles permitidos para autenticación de usuario
+ * @param requiredPermission - Permiso requerido para autenticación de usuario
  * @returns true si autorizado por cualquier método
  */
 export async function verifyAccess(
     req: Request,
     supabase: SupabaseClient,
-    allowedRoles: RoleSet = ROLES.ADMIN_AND_ABOVE
+    requiredPermission: string
 ): Promise<boolean> {
-    // Primero intentar autenticación por usuario
+    // Primero intentar autenticación por usuario con permiso granular
     const authHeader = req.headers.get('authorization')
     if (authHeader) {
         try {
-            await verifyUserRole(req, supabase, allowedRoles)
+            await verifyPermission(req, supabase, requiredPermission)
             return true
         } catch {
             // Continuar con verificación de clave interna
@@ -124,12 +124,27 @@ export async function verifyPermission(
     }
 
     // ESTRATEGIA OPTIMIZADA: Leer de base de datos usando RPC has_permission
-    // Esto asegura que usamos la misma lógica que el backend SQL
-    const { data: hasPerm, error: rpcError } = await supabase.rpc('has_permission', {
+    // IMPORTANTE: Debemos usar un cliente con el token del usuario para que auth.jwt() sea correcto
+    const userClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+            global: {
+                headers: { Authorization: authHeader }
+            }
+        }
+    )
+
+    const { data: hasPerm, error: rpcError } = await userClient.rpc('has_permission', {
         required_permission: requiredPermission
     })
 
-    if (rpcError || !hasPerm) {
+    if (rpcError) {
+        console.error('Permission check failed:', rpcError)
+        throw new Error('Unauthorized: Permission check failed')
+    }
+
+    if (!hasPerm) {
         throw new Error(`Unauthorized: Missing permission ${requiredPermission}`)
     }
 
