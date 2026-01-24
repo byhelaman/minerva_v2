@@ -17,6 +17,7 @@ interface ZoomState {
     meetings: ZoomMeetingCandidate[];
     users: ZoomUser[];
     matchResults: MatchResult[];
+    activeMeetingIds: string[];
 
     // Estado UI
     isSyncing: boolean;
@@ -36,10 +37,11 @@ interface ZoomState {
 
     // Acciones
     fetchZoomData: (options?: { force?: boolean; silent?: boolean }) => Promise<void>;
+    fetchActiveMeetings: () => Promise<void>;
     triggerSync: () => Promise<void>;
     runMatching: (schedules: Schedule[]) => Promise<void>;
     resolveConflict: (schedule: Schedule, selectedMeeting: ZoomMeetingCandidate) => void;
-    createMeetings: (topics: string[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
+    createMeetings: (topics: string[], options?: { dailyOnly?: boolean }) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
     updateMatchings: (updates: { meeting_id: string; topic?: string; schedule_for?: string }[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
     executeAssignments: (schedules?: Schedule[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
 
@@ -56,6 +58,7 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
     meetings: [],
     users: [],
     matchResults: [],
+    activeMeetingIds: [],
     isSyncing: false,
     syncProgress: 0,
     syncError: null,
@@ -146,6 +149,20 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
 
         set({ _activeFetchPromise: fetchPromise });
         return fetchPromise;
+    },
+
+    fetchActiveMeetings: async () => {
+        try {
+            const { data, error } = await supabase.rpc('get_active_meetings');
+            if (error) {
+                console.error("Error fetching active meetings:", error);
+                return;
+            }
+            const meetingIds = (data as { meeting_id: string }[] | null)?.map(r => r.meeting_id) ?? [];
+            set({ activeMeetingIds: meetingIds });
+        } catch (error) {
+            console.error("Error fetching active meetings:", error);
+        }
     },
 
     _initWorker: (meetings: ZoomMeetingCandidate[], users: ZoomUser[]) => {
@@ -361,41 +378,65 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
         }
     },
 
-    createMeetings: async (topics: string[]) => {
+    createMeetings: async (topics: string[], options?: { dailyOnly?: boolean }) => {
         set({ isExecuting: true });
         try {
+            const dailyOnly = options?.dailyOnly ?? false;
+
             // Build requests
-            // Default payload reference:
-            // Type 8 (Recurring fixed time), Weekly, Lun-Jue, +120 days
-            // Start time: Tomorrow 9AM (arbitrary start for recurring container)
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(9, 0, 0, 0);
-            const startTimeStr = tomorrow.toISOString().split('.')[0]; // Remove millis
+            let requests;
 
-            // End date +120 days
-            const endDate = new Date(tomorrow);
-            endDate.setDate(endDate.getDate() + 120);
-            const endDateTime = endDate.toISOString().replace('.000', ''); // Z format roughly
+            if (dailyOnly) {
+                // Type 2 (Scheduled) - Single meeting for today
+                const today = new Date();
+                today.setHours(9, 0, 0, 0);
+                const startTimeStr = today.toISOString().split('.')[0]; // Remove millis
 
-            const requests = topics.map(topic => ({
-                action: 'create' as const,
-                topic,
-                type: 8,
-                start_time: startTimeStr,
-                duration: 60,
-                timezone: 'America/Lima',
-                recurrence: {
-                    type: 2, // Weekly
-                    repeat_interval: 1,
-                    weekly_days: "2,3,4,5", // Mon-Thu
-                    end_date_time: endDateTime
-                },
-                settings: {
-                    join_before_host: true,
-                    waiting_room: true
-                }
-            }));
+                requests = topics.map(topic => ({
+                    action: 'create' as const,
+                    topic,
+                    type: 2, // Scheduled (single occurrence)
+                    start_time: startTimeStr,
+                    duration: 60,
+                    timezone: 'America/Lima',
+                    settings: {
+                        join_before_host: true,
+                        waiting_room: true
+                    }
+                }));
+            } else {
+                // Default payload reference:
+                // Type 8 (Recurring fixed time), Weekly, Lun-Jue, +120 days
+                // Start time: Tomorrow 9AM (arbitrary start for recurring container)
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(9, 0, 0, 0);
+                const startTimeStr = tomorrow.toISOString().split('.')[0]; // Remove millis
+
+                // End date +120 days
+                const endDate = new Date(tomorrow);
+                endDate.setDate(endDate.getDate() + 120);
+                const endDateTime = endDate.toISOString().replace('.000', ''); // Z format roughly
+
+                requests = topics.map(topic => ({
+                    action: 'create' as const,
+                    topic,
+                    type: 8,
+                    start_time: startTimeStr,
+                    duration: 60,
+                    timezone: 'America/Lima',
+                    recurrence: {
+                        type: 2, // Weekly
+                        repeat_interval: 1,
+                        weekly_days: "2,3,4,5", // Mon-Thu
+                        end_date_time: endDateTime
+                    },
+                    settings: {
+                        join_before_host: true,
+                        waiting_room: true
+                    }
+                }));
+            }
 
             const result = await processBatchChunks(requests);
 

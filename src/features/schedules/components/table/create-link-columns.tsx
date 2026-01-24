@@ -6,7 +6,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CheckCircle2, HelpCircle, RefreshCw, MoreHorizontal, Hand } from "lucide-react";
+import { CheckCircle2, HelpCircle, RefreshCw, MoreHorizontal, Hand, Plus, Undo2 } from "lucide-react";
+import { toast } from "sonner";
 
 // Tipos para el resultado de validación
 export type ValidationStatus = 'to_create' | 'exists' | 'ambiguous' | 'manual';
@@ -25,6 +26,13 @@ export interface ValidationResult {
         host_id?: string;
     }>;
     host_id?: string;
+    forcedNew?: boolean; // Indica que fue marcado manualmente como nuevo desde ambiguous
+    previousMatch?: { // Guarda el match original cuando se marca como nuevo desde exists
+        meeting_id: string;
+        join_url?: string;
+        matchedTopic?: string;
+        host_id?: string;
+    };
 }
 
 // Estilos de badge por status
@@ -64,7 +72,10 @@ StatusBadge.displayName = "StatusBadge";
 // Columnas para la tabla de validación en CreateLinkModal
 export const getCreateLinkColumns = (
     hostMap: Map<string, string> = new Map(),
-    onSelectCandidate?: (rowId: string, candidate: { meeting_id: string; topic: string; join_url?: string; host_id?: string } | null) => void
+    onSelectCandidate?: (rowId: string, candidate: { meeting_id: string; topic: string; join_url?: string; host_id?: string } | null) => void,
+    onMarkAsNew?: (rowId: string) => void,
+    onRevertToAmbiguous?: (rowId: string) => void,
+    onRevertToExists?: (rowId: string) => void
 ): ColumnDef<ValidationResult>[] => [
         {
             id: "select",
@@ -158,6 +169,17 @@ export const getCreateLinkColumns = (
                                                     );
                                                 })}
                                             </div>
+                                            {onMarkAsNew && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="w-full mt-3 border-dashed"
+                                                    onClick={() => onMarkAsNew(result.id)}
+                                                >
+                                                    <Plus />
+                                                    Create New
+                                                </Button>
+                                            )}
                                         </div>
                                     </PopoverContent>
                                 </Popover>
@@ -210,11 +232,59 @@ export const getCreateLinkColumns = (
                                                 </div>
                                             )}
                                         </div>
+                                        {onMarkAsNew && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full mt-3 border-dashed"
+                                                onClick={() => onMarkAsNew(result.id)}
+                                            >
+                                                <Plus />
+                                                Create New Instead
+                                            </Button>
+                                        )}
                                     </div>
                                 </PopoverContent>
                             </Popover>
                         </div>
                     );
+                }
+
+                // Si es to_create con forcedNew, mostrar popover con opción de revertir
+                // Soporta ambiguousCandidates (revert to ambiguous) O previousMatch (revert to exists)
+                if (status === 'to_create' && result.forcedNew) {
+                    const hasAmbiguous = result.ambiguousCandidates && result.ambiguousCandidates.length > 0 && onRevertToAmbiguous;
+                    const hasPrevious = result.previousMatch && onRevertToExists;
+
+                    if (hasAmbiguous || hasPrevious) {
+                        return (
+                            <div className="flex justify-center">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        {badge}
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-56 p-3 rounded-lg" onWheel={(e) => e.stopPropagation()}>
+                                        <div className="space-y-3">
+                                            <p className="text-sm text-muted-foreground">
+                                                {hasAmbiguous
+                                                    ? `This item was marked as new manually. ${result.ambiguousCandidates!.length} existing match${result.ambiguousCandidates!.length > 1 ? 'es' : ''} were ignored.`
+                                                    : `This item was marked as new manually. The original match was: "${result.previousMatch!.matchedTopic}"`}
+                                            </p>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full"
+                                                onClick={() => hasAmbiguous ? onRevertToAmbiguous!(result.id) : onRevertToExists!(result.id)}
+                                            >
+                                                <Undo2 />
+                                                Undo
+                                            </Button>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        );
+                    }
                 }
 
                 return <div className="flex justify-center">{badge}</div>;
@@ -256,18 +326,33 @@ export const getCreateLinkColumns = (
         {
             id: "actions",
             size: 50,
-            cell: () => {
+            cell: ({ row }) => {
+                const result = row.original;
+                const hasJoinUrl = !!result.join_url;
+
+                const handleCopyDetails = async () => {
+                    const topic = result.matchedTopic || result.inputName;
+                    const details = result.join_url
+                        ? `${topic}\n${result.join_url}`
+                        : topic;
+                    await navigator.clipboard.writeText(details);
+                    toast.success("Details copied to clipboard");
+                };
+
                 return (
                     <div className="flex justify-center">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon-sm">
                                     <span className="sr-only">Open menu</span>
-                                    <MoreHorizontal className="w-4 h-4" />
+                                    <MoreHorizontal />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={handleCopyDetails}
+                                    disabled={!hasJoinUrl}
+                                >
                                     Copy details
                                 </DropdownMenuItem>
                             </DropdownMenuContent>

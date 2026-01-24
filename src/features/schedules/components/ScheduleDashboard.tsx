@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { UploadModal } from "@schedules/components/modals/UploadModal";
 import { ScheduleDataTable } from "@schedules/components/table/ScheduleDataTable";
 import { getScheduleColumns } from "@schedules/components/table/columns";
@@ -15,6 +15,7 @@ import { SearchLinkModal } from "./modals/SearchLinkModal";
 import { CreateLinkModal } from "./modals/CreateLinkModal";
 import { AssignLinkModal } from "./modals/AssignLinkModal";
 import { useZoomStore } from "@/features/matching/stores/useZoomStore";
+import { MatchingService } from "@/features/matching/services/matcher";
 
 export function ScheduleDashboard() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -26,8 +27,14 @@ export function ScheduleDashboard() {
     const hasLoadedAutosave = useRef(false);
     const autoSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { settings } = useSettings();
-    const fetchZoomData = useZoomStore((state) => state.fetchZoomData);
-    const isInitialized = useZoomStore((state) => state.isInitialized);
+    const { fetchZoomData, isInitialized, meetings, users, fetchActiveMeetings, isLoadingData } = useZoomStore();
+
+    // Live Mode state
+    const [showLiveMode, setShowLiveMode] = useState(false);
+    const [isLiveLoading, setIsLiveLoading] = useState(false);
+    const [activePrograms, setActivePrograms] = useState<Set<string>>(new Set());
+    const [liveTimeFilter, setLiveTimeFilter] = useState<string | undefined>(undefined);
+    const [liveDateFilter, setLiveDateFilter] = useState<string | undefined>(undefined);
 
     // Pre-load Zoom data in background on mount
     useEffect(() => {
@@ -99,6 +106,74 @@ export function ScheduleDashboard() {
             }
         };
     }, [schedules, settings.autoSave]);
+
+    // Live Mode: Calcular qué meetings activos coinciden con los schedules
+    const handleLiveModeToggle = useCallback(async (enabled: boolean) => {
+        setShowLiveMode(enabled);
+
+        if (!enabled) {
+            setActivePrograms(new Set());
+            setLiveTimeFilter(undefined);
+            setLiveDateFilter(undefined);
+            return;
+        }
+
+        // Calcular la hora actual en formato "HH" y fecha en formato del schedule (DD/MM/YYYY)
+        const now = new Date();
+        const currentHour = now.getHours().toString().padStart(2, '0');
+        const currentDate = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
+        setLiveTimeFilter(currentHour);
+        setLiveDateFilter(currentDate);
+
+        setIsLiveLoading(true);
+        try {
+            // 1. Obtener meetings activos frescos
+            await fetchActiveMeetings();
+
+            // 2. Obtener los IDs activos del store
+            const currentActiveIds = useZoomStore.getState().activeMeetingIds;
+
+            if (currentActiveIds.length === 0) {
+                setActivePrograms(new Set());
+                setIsLiveLoading(false);
+                return;
+            }
+
+            // 3. Crear matcher y filtrar solo meetings activos
+            const activeMeetings = meetings.filter(m => currentActiveIds.includes(m.meeting_id));
+
+            if (activeMeetings.length === 0) {
+                setActivePrograms(new Set());
+                setIsLiveLoading(false);
+                return;
+            }
+
+            // 4. Filtrar schedules por fecha y hora actual (consistente con la vista de tabla)
+            const filteredSchedules = schedules.filter(s => {
+                const matchesDate = s.date === currentDate;
+                const matchesHour = s.start_time?.substring(0, 2) === currentHour;
+                return matchesDate && matchesHour;
+            });
+
+            // 5. Hacer matching entre schedules filtrados y meetings activos
+            const matcher = new MatchingService(activeMeetings, users);
+            const matchedPrograms = new Set<string>();
+
+            for (const schedule of filteredSchedules) {
+                const result = matcher.findMatchByTopic(schedule.program, { ignoreLevelMismatch: true });
+                if (result.status !== 'not_found' && result.matchedCandidate) {
+                    matchedPrograms.add(schedule.program);
+                }
+            }
+
+            setActivePrograms(matchedPrograms);
+        } catch (error) {
+            console.error("Error in live mode:", error);
+            toast.error("Failed to fetch live meetings");
+        } finally {
+            setIsLiveLoading(false);
+        }
+    }, [meetings, users, schedules, fetchActiveMeetings]);
 
     const handleUploadComplete = (newData: Schedule[]) => {
         // Paso 1: Deduplicar internamente los datos nuevos (entre archivos subidos)
@@ -236,6 +311,13 @@ export function ScheduleDashboard() {
                 data={schedules}
                 onClearSchedule={schedules.length > 0 ? handleClearSchedule : undefined}
                 onUploadClick={() => setIsUploadModalOpen(true)}
+                showLiveMode={showLiveMode}
+                setShowLiveMode={handleLiveModeToggle}
+                isLiveLoading={isLiveLoading || isLoadingData}
+                activePrograms={showLiveMode ? activePrograms : undefined}
+                liveTimeFilter={showLiveMode ? liveTimeFilter : undefined}
+                liveDateFilter={showLiveMode ? liveDateFilter : undefined}
+                initialPageSize={100}
             />
 
             {/* Upload Modal */}

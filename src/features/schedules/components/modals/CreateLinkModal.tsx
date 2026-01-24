@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { ScheduleDataTable } from "@schedules/components/table/ScheduleDataTable";
 import { useZoomStore } from "@/features/matching/stores/useZoomStore";
 import { MatchingService } from "@/features/matching/services/matcher";
@@ -28,6 +29,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
     const [inputText, setInputText] = useState("");
     const [isValidating, setIsValidating] = useState(false);
     const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+    const [dailyOnly, setDailyOnly] = useState(false);
 
     // Reset cuando se cierra el modal
     useEffect(() => {
@@ -36,13 +38,16 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
             setInputText("");
             setValidationResults([]);
             setIsValidating(false);
+            setDailyOnly(false);
         }
     }, [open]);
 
-    // Cargar datos de Zoom si no están inicializados
+    // Cargar datos de Zoom al abrir
     useEffect(() => {
-        if (open && !isInitialized && !isLoadingData) {
-            fetchZoomData();
+        if (open) {
+            if (!isInitialized && !isLoadingData) {
+                fetchZoomData();
+            }
         }
     }, [open, isInitialized, isLoadingData, fetchZoomData]);
 
@@ -240,9 +245,68 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
         }));
     };
 
+    // Manejador para marcar como nuevo (ignorar coincidencias)
+    const handleMarkAsNew = (rowId: string) => {
+        setValidationResults(prev => prev.map(row => {
+            if (row.id === rowId) {
+                // Guardar match anterior si viene de 'exists'
+                const previousMatch = row.status === 'exists' && row.meeting_id ? {
+                    meeting_id: row.meeting_id,
+                    join_url: row.join_url,
+                    matchedTopic: row.matchedTopic,
+                    host_id: row.host_id,
+                } : undefined;
+
+                return {
+                    ...row,
+                    status: 'to_create' as ValidationStatus,
+                    meeting_id: undefined,
+                    join_url: undefined,
+                    matchedTopic: undefined,
+                    forcedNew: true,
+                    previousMatch: previousMatch || row.previousMatch, // Mantener si ya existía
+                };
+            }
+            return row;
+        }));
+    };
+
+    // Manejador para revertir a ambiguo
+    const handleRevertToAmbiguous = (rowId: string) => {
+        setValidationResults(prev => prev.map(row => {
+            if (row.id === rowId) {
+                return {
+                    ...row,
+                    status: 'ambiguous' as ValidationStatus,
+                    forcedNew: undefined,
+                };
+            }
+            return row;
+        }));
+    };
+
+    // Manejador para revertir a exists (desde forcedNew con previousMatch)
+    const handleRevertToExists = (rowId: string) => {
+        setValidationResults(prev => prev.map(row => {
+            if (row.id === rowId && row.previousMatch) {
+                return {
+                    ...row,
+                    status: 'exists' as ValidationStatus,
+                    meeting_id: row.previousMatch.meeting_id,
+                    join_url: row.previousMatch.join_url,
+                    matchedTopic: row.previousMatch.matchedTopic,
+                    host_id: row.previousMatch.host_id,
+                    forcedNew: undefined,
+                    previousMatch: undefined,
+                };
+            }
+            return row;
+        }));
+    };
+
     // Columnas con manejador memorizado
     const columns = useMemo(() =>
-        getCreateLinkColumns(hostMap, handleSelectCandidate),
+        getCreateLinkColumns(hostMap, handleSelectCandidate, handleMarkAsNew, handleRevertToAmbiguous, handleRevertToExists),
         [hostMap]
     );
 
@@ -386,6 +450,19 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
 
                             {/* Botones a la derecha */}
                             <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mr-2">
+                                    <Switch
+                                        id="daily-only"
+                                        checked={dailyOnly}
+                                        onCheckedChange={setDailyOnly}
+                                        disabled={isExecuting || isValidating || isLoadingData}
+                                        className="h-[20px] w-[36px] [&_span[data-slot=switch-thumb]]:size-4 [&_span[data-slot=switch-thumb]]:data-[state=checked]:translate-x-4"
+                                    />
+                                    <Label htmlFor="daily-only" className={cn('text-sm cursor-pointer', dailyOnly ? 'text-primary' : 'text-muted-foreground')}>
+                                        Daily links
+                                    </Label>
+                                </div>
+
                                 <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isExecuting}>
                                     Cancel
                                 </Button>
@@ -422,7 +499,7 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                                         let failureCount = 0;
 
                                         if (toCreate.length > 0) {
-                                            const res = await createMeetings(toCreate);
+                                            const res = await createMeetings(toCreate, { dailyOnly });
                                             successCount += res.succeeded;
                                             failureCount += res.failed;
                                         }

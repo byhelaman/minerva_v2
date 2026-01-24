@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Loader2, Trash2, CircleAlert, Plus } from "lucide-react";
+import { Search, Loader2, Trash2, CircleAlert, Plus, Pencil, Check, X } from "lucide-react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
@@ -85,6 +85,11 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
     const [deleteConfirmUser, setDeleteConfirmUser] = useState<User | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Edit display name state
+    const [editingUserId, setEditingUserId] = useState<string | null>(null);
+    const [editingDisplayName, setEditingDisplayName] = useState("");
+    const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
+
     // Create user state
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
@@ -154,6 +159,44 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
         } catch (err: any) {
             console.error('Error updating role:', err);
             toast.error(err.message || 'Failed to update role');
+        }
+    };
+
+    const handleStartEditDisplayName = (user: User) => {
+        setEditingUserId(user.id);
+        setEditingDisplayName(user.display_name || '');
+    };
+
+    const handleCancelEditDisplayName = () => {
+        setEditingUserId(null);
+        setEditingDisplayName('');
+    };
+
+    const handleSaveDisplayName = async (userId: string) => {
+        setIsSavingDisplayName(true);
+        try {
+            const { error } = await supabase.rpc('update_user_display_name', {
+                target_user_id: userId,
+                new_display_name: editingDisplayName.trim() || null
+            });
+
+            if (error) throw error;
+
+            // Update local state
+            setUsers(prev => prev.map(u =>
+                u.id === userId
+                    ? { ...u, display_name: editingDisplayName.trim() || null }
+                    : u
+            ));
+
+            setEditingUserId(null);
+            setEditingDisplayName('');
+            toast.success('Display name updated successfully');
+        } catch (err: any) {
+            console.error('Error updating display name:', err);
+            toast.error(err.message || 'Failed to update display name');
+        } finally {
+            setIsSavingDisplayName(false);
         }
     };
 
@@ -289,12 +332,57 @@ export function ManageUsersModal({ open, onOpenChange }: ManageUsersModalProps) 
                         {!isLoading && !error && (
                             <div className="border rounded-lg divide-y max-h-[400px] overflow-y-auto">
                                 {filteredUsers.map((user) => (
-                                    <div key={user.id} className="flex items-center justify-between p-3 px-4 hover:bg-muted/50">
+                                    <div key={user.id} className="group flex items-center justify-between p-3 px-4 hover:bg-muted/50">
                                         <div className="space-y-0.5 min-w-0 flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-medium text-sm truncate">
-                                                    {user.display_name || user.email.split('@')[0]}
-                                                </p>
+                                                {editingUserId === user.id ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <Input
+                                                            value={editingDisplayName}
+                                                            onChange={(e) => setEditingDisplayName(e.target.value)}
+                                                            className="h-7 w-[160px] text-sm"
+                                                            placeholder="Display name"
+                                                            autoFocus
+                                                            disabled={isSavingDisplayName}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleSaveDisplayName(user.id);
+                                                                if (e.key === 'Escape') handleCancelEditDisplayName();
+                                                            }}
+                                                        />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon-sm"
+                                                            onClick={() => handleSaveDisplayName(user.id)}
+                                                            disabled={isSavingDisplayName}
+                                                        >
+                                                            {isSavingDisplayName ? <Loader2 className="animate-spin" /> : <Check className="text-green-600" />}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon-sm"
+                                                            onClick={handleCancelEditDisplayName}
+                                                            disabled={isSavingDisplayName}
+                                                        >
+                                                            <X className="text-muted-foreground" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="font-medium text-sm truncate">
+                                                            {user.display_name || user.email.split('@')[0]}
+                                                        </p>
+                                                        {canModifyUser(user.hierarchy_level) && user.id !== profile?.id && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon-sm"
+                                                                className="h-5 w-5 opacity-0 group-hover:opacity-100 hover:opacity-100"
+                                                                onClick={() => handleStartEditDisplayName(user)}
+                                                            >
+                                                                <Pencil className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
+                                                    </>
+                                                )}
                                                 {user.id === profile?.id && (
                                                     <Badge variant="secondary" className="text-xs">You</Badge>
                                                 )}

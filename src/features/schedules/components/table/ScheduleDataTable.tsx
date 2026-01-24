@@ -27,6 +27,7 @@ import { DataTablePagination } from "./data-table-pagination";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { detectOverlaps, getScheduleKey } from "@schedules/utils/overlap-utils";
 import { Schedule } from "@schedules/utils/excel-parser";
+import { cn } from "@/lib/utils";
 
 interface ScheduleDataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[] | ((addStatusFilter: (status: string) => void) => ColumnDef<TData, TValue>[]);
@@ -45,6 +46,13 @@ interface ScheduleDataTableProps<TData, TValue> {
     disableRefresh?: boolean;
     initialPageSize?: number;
     statusOptions?: { label: string; value: string; icon?: React.ComponentType<{ className?: string }> }[];
+    activeMeetingIds?: string[];
+    activePrograms?: Set<string>;
+    showLiveMode?: boolean;
+    setShowLiveMode?: (show: boolean) => void;
+    isLiveLoading?: boolean;
+    liveTimeFilter?: string; // Hora en formato "HH" para filtrar cuando Live está activo
+    liveDateFilter?: string; // Fecha en formato "DD/MM/YYYY" para filtrar cuando Live está activo
 }
 
 export function ScheduleDataTable<TData, TValue>({
@@ -76,6 +84,30 @@ export function ScheduleDataTable<TData, TValue>({
     const [globalFilter, setGlobalFilter] = React.useState("");
     const [showOverlapsOnly, setShowOverlapsOnly] = React.useState(false);
 
+    // Aplicar/quitar filtros de tiempo y fecha cuando Live mode cambia
+    React.useEffect(() => {
+        if (props.showLiveMode && props.liveTimeFilter) {
+            // Activar Live: aplicar filtros de hora y fecha actual
+            setColumnFilters(prev => {
+                const withoutTimeAndDate = prev.filter(f => f.id !== 'start_time' && f.id !== 'date');
+                const newFilters = [...withoutTimeAndDate, { id: 'start_time', value: [props.liveTimeFilter] }];
+                if (props.liveDateFilter) {
+                    newFilters.push({ id: 'date', value: [props.liveDateFilter] });
+                }
+                return newFilters;
+            });
+        } else if (!props.showLiveMode) {
+            // Desactivar Live: quitar filtros de hora y fecha
+            setColumnFilters(prev => {
+                const hasLiveFilters = prev.some(f => f.id === 'start_time' || f.id === 'date');
+                if (hasLiveFilters) {
+                    return prev.filter(f => f.id !== 'start_time' && f.id !== 'date');
+                }
+                return prev;
+            });
+        }
+    }, [props.showLiveMode, props.liveTimeFilter, props.liveDateFilter]);
+
     // Función para agregar un status al filtro de status
     const addStatusFilter = React.useCallback((status: string) => {
         setColumnFilters(prev => {
@@ -89,9 +121,10 @@ export function ScheduleDataTable<TData, TValue>({
                             : f
                     );
                 }
+                return prev;
             }
-            // Si no hay filtro de status activo, no hacer nada
-            return prev;
+            // Si no hay filtro de status activo, crear uno nuevo con el status
+            return [...prev, { id: 'status', value: [status] }];
         });
     }, []);
 
@@ -158,7 +191,7 @@ export function ScheduleDataTable<TData, TValue>({
         getSortedRowModel: getSortedRowModel(),
         getFacetedRowModel: getFacetedRowModel(),
         getFacetedUniqueValues: getFacetedUniqueValues(),
-        autoResetPageIndex: false, // Mantener la página actual cuando los datos cambian
+        autoResetPageIndex: true, // Resetear a página 1 cuando cambian filtros
     });
 
     // Guardar callback en ref para evitar re-ejecución por cambio de referencia
@@ -228,6 +261,10 @@ export function ScheduleDataTable<TData, TValue>({
                 hideActions={props.hideActions}
                 disableRefresh={props.disableRefresh}
                 statusOptions={statusOptions}
+                showLiveMode={props.showLiveMode}
+                setShowLiveMode={props.setShowLiveMode}
+                isLiveLoading={props.isLiveLoading}
+                activeMeetingsCount={props.activePrograms?.size ?? props.activeMeetingIds?.length ?? 0}
             />
 
             {/* Table */}
@@ -264,15 +301,22 @@ export function ScheduleDataTable<TData, TValue>({
                                     getScheduleKey(row.original as Schedule)
                                 );
 
+                                // Detectar si la reunión está activa
+                                // Soporta: meeting_id/meetingId para modals, program para Management
+                                const original = row.original as { meeting_id?: string; meetingId?: string; program?: string };
+                                const rowMeetingId = original.meeting_id || original.meetingId;
+                                const isActiveByMeetingId = rowMeetingId && props.activeMeetingIds?.includes(rowMeetingId);
+                                const isActiveByProgram = original.program && props.activePrograms?.has(original.program);
+                                const isActive = isActiveByMeetingId || isActiveByProgram;
+
                                 return (
                                     <TableRow
                                         key={row.id}
                                         data-state={row.getIsSelected() && "selected"}
-                                        className={
-                                            isConflict
-                                                ? "text-destructive"
-                                                : undefined
-                                        }
+                                        className={cn(
+                                            isConflict && "text-destructive",
+                                            isActive && "bg-green-50 dark:bg-green-950/20 border-l-2 border-l-green-500"
+                                        )}
                                     >
                                         {row.getVisibleCells().map((cell) => (
                                             <TableCell key={cell.id}>

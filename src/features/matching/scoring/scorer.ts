@@ -180,7 +180,13 @@ export function evaluateMatch(
             const hardRejectPenalties = ['COMPANY_CONFLICT', 'CRITICAL_TOKEN_MISMATCH'];
             const isHardReject = bestRejected.penalties.some(p => hardRejectPenalties.includes(p.name));
 
-            if (isHardReject) {
+            // WEAK_MATCH con cobertura 0% es hard reject, pero cobertura > 0% es ambiguous
+            const weakMatchPenalty = bestRejected.penalties.find(p => p.name === 'WEAK_MATCH');
+
+            // Usamos metadatos estructurados
+            const isZeroCoverageWeakMatch = weakMatchPenalty?.metadata?.coverage === 0;
+
+            if (isHardReject || isZeroCoverageWeakMatch) {
                 return {
                     bestMatch: null, // Hard reject -> No match
                     allResults: results,

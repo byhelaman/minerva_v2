@@ -31,6 +31,7 @@ export interface AppliedPenalty {
     name: string;
     points: number;
     reason?: string;
+    metadata?: Record<string, any>; // Metadatos estructurados para lógica programática
 }
 
 /**

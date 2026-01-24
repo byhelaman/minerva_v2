@@ -101,7 +101,7 @@ describe('MatchingService - Meetings', () => {
         const schedule = { program: 'TRIO NOVA L4 (NOVA)(PRESENCIAL-TRAVEL)', instructor: 'Any' } as any;
         const result = matcher.findMatch(schedule);
         expect(result.meeting_id).toBeUndefined(); // Now correctly rejected
-        expect(result.status).toBe('ambiguous'); // Returns ambiguous (disqualified) instead of not_found for visibility
+        expect(result.status).toBe('not_found'); // WEAK_MATCH is a hard reject, returns not_found
     });
 
     // debe dar error, no debe hacer matching

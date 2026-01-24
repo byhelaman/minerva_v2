@@ -42,10 +42,12 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
         return `${schedule.date}-${schedule.start_time}-${schedule.program}-${schedule.instructor}`;
     };
 
-    // 1. Cargar datos de Zoom si no están inicializados
+    // 1. Cargar datos de Zoom al abrir
     useEffect(() => {
-        if (open && !isInitialized && !isLoadingData) {
-            fetchZoomData();
+        if (open) {
+            if (!isInitialized && !isLoadingData) {
+                fetchZoomData();
+            }
         }
     }, [open, isInitialized, isLoadingData, fetchZoomData]);
 
@@ -389,6 +391,7 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                             hideActions={true}
                             hideOverlaps={true}
                             disableRefresh={isExecuting}
+                            initialPageSize={100}
                         />
                     )}
                 </div>

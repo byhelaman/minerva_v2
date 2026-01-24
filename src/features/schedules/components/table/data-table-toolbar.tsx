@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { secureSaveFile } from "@/lib/secure-export";
 import { type Table } from "@tanstack/react-table";
-import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, XCircle, RefreshCw, BadgeCheckIcon, HelpCircle, Hand, Clock1, Clock2, Clock3, Clock4, Clock5, Clock6, Clock7, Clock8, Clock9, Clock10, Clock11, Clock12 } from "lucide-react";
+import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, XCircle, RefreshCw, BadgeCheckIcon, HelpCircle, Hand, Clock1, Clock2, Clock3, Clock4, Clock5, Clock6, Clock7, Clock8, Clock9, Clock10, Clock11, Clock12, Radio, Loader2, AlertTriangle } from "lucide-react";
 import { utils, write } from "xlsx";
 import { toast } from "sonner";
 import { writeTextFile, BaseDirectory } from "@tauri-apps/plugin-fs";
@@ -34,10 +34,7 @@ import { useSettings } from "@/components/settings-provider";
 import { RequirePermission } from "@/components/RequirePermission";
 
 // Opciones de filtro para campos de Schedule
-const shiftOptions = [
-    { label: "P. ZUÑIGA", value: "P. ZUÑIGA" },
-    { label: "H. GARCIA", value: "H. GARCIA" },
-];
+
 
 const branchOptions = [
     { label: "CORPORATE", value: "CORPORATE" },
@@ -95,6 +92,10 @@ interface DataTableToolbarProps<TData> {
     hideActions?: boolean;
     disableRefresh?: boolean;
     statusOptions?: { label: string; value: string; icon?: React.ComponentType<{ className?: string }> }[];
+    showLiveMode?: boolean;
+    setShowLiveMode?: (show: boolean) => void;
+    isLiveLoading?: boolean;
+    activeMeetingsCount?: number;
 }
 
 export function DataTableToolbar<TData>({
@@ -111,6 +112,10 @@ export function DataTableToolbar<TData>({
     hideActions = false,
     disableRefresh = false,
     statusOptions = defaultStatusOptions,
+    showLiveMode = false,
+    setShowLiveMode,
+    isLiveLoading = false,
+    activeMeetingsCount = 0,
 }: DataTableToolbarProps<TData>) {
     const isFiltered =
         table.getState().columnFilters.length > 0 ||
@@ -312,14 +317,6 @@ export function DataTableToolbar<TData>({
 
                     {!hideFilters && (
                         <>
-                            {table.getColumn("shift") && (
-                                <DataTableFacetedFilter
-                                    column={table.getColumn("shift")}
-                                    title="Shift"
-                                    options={shiftOptions}
-                                    disabled={isTableEmpty}
-                                />
-                            )}
                             {table.getColumn("branch") && (
                                 <DataTableFacetedFilter
                                     column={table.getColumn("branch")}
@@ -337,6 +334,21 @@ export function DataTableToolbar<TData>({
                                     disabled={isTableEmpty}
                                 />
                             )}
+                            {/* Overlaps filter - al lado de los filtros */}
+                            {overlapCount > 0 && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowOverlapsOnly(!showOverlapsOnly)}
+                                    className={cn(
+                                        "h-8 border-dashed border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive"
+                                    )}
+                                >
+                                    <AlertTriangle />
+                                    Overlaps
+                                    {/* {showOverlapsOnly && ` (${overlapCount})`} */}
+                                </Button>
+                            )}
                         </>
                     )}
                     {isFiltered && (
@@ -347,6 +359,7 @@ export function DataTableToolbar<TData>({
                                 table.resetColumnFilters();
                                 table.setGlobalFilter("");
                                 setShowOverlapsOnly(false);
+                                setShowLiveMode?.(false);
                             }}
                         >
                             Reset
@@ -355,18 +368,25 @@ export function DataTableToolbar<TData>({
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    {overlapCount > 0 && (
+                    {/* Live Mode Toggle */}
+                    {setShowLiveMode && (
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setShowOverlapsOnly(!showOverlapsOnly)}
+                            onClick={() => setShowLiveMode(!showLiveMode)}
+                            disabled={isLiveLoading || isTableEmpty}
                             className={cn(
                                 "h-8 border-dashed",
-                                showOverlapsOnly &&
-                                "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive"
+                                showLiveMode &&
+                                "border-green-500/50 bg-green-500/10 text-green-600 hover:bg-green-500/20 hover:text-green-600 hover:border-green-500/50 dark:border-green-500/50 dark:bg-green-500/10 dark:text-green-400 dark:hover:bg-green-500/20 dark:hover:text-green-400"
                             )}
                         >
-                            {`Overlaps (${overlapCount})`}
+                            {isLiveLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Radio className={cn("h-4 w-4", showLiveMode && "animate-pulse")} />
+                            )}
+                            {showLiveMode && activeMeetingsCount > 0 ? `Live (${activeMeetingsCount})` : "Live"}
                         </Button>
                     )}
                     <DataTableViewOptions table={table} />

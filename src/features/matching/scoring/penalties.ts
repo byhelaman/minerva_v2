@@ -322,9 +322,12 @@ function filterDistinctiveTokens(tokens: string[]): string[] {
 
 /**
  * Verifica si un token tiene coincidencia fuzzy en una lista de tokens de referencia.
+ * Umbral conservador: distancia 1 para evitar falsos positivos (ej: MARIA ≠ MAYRA)
  */
 function hasFuzzyMatch(token: string, referenceTokens: string[]): boolean {
-    const allowedDist = token.length < 5 ? 1 : 2;
+    // Distancia 1 siempre - solo tolera typos menores (ej: GARCIA → GARCYA)
+    // Distancia 2 causaba falsos positivos con nombres similares (MARIA ↔ MAYRA)
+    const allowedDist = 1;
     return referenceTokens.some(ref => levenshtein(token, ref) <= allowedDist);
 }
 
@@ -397,7 +400,7 @@ function applyMissingTokenPenalty(
     hasPersonTitle: boolean,
     isTopicCovered: boolean,
     isRelaxedMode: boolean = false
-): { name: string; points: number; reason: string } | null {
+): { name: string; points: number; reason: string; metadata?: Record<string, any> } | null {
     if (missingTokens.length === 0) return null;
 
     // Caso 1: Ningún token distintivo coincide → WEAK_MATCH
@@ -405,7 +408,11 @@ function applyMissingTokenPenalty(
         return {
             name: 'WEAK_MATCH',
             points: PENALTIES.WEAK_MATCH,
-            reason: `Ningún token distintivo coincide: ${missingTokens.join(', ')}`
+            reason: `Ningún token distintivo coincide: ${missingTokens.join(', ')}`,
+            metadata: {
+                coverage: 0,
+                minCoverage: 1 // Irrelevante aquí, pero para consistencia
+            }
         };
     }
 
@@ -498,7 +505,11 @@ export const weakMatch: PenaltyFunction = (ctx) => {
         return {
             name: 'WEAK_MATCH',
             points: PENALTIES.WEAK_MATCH,
-            reason: `Cobertura insuficiente (${Math.round(coverage.coverage * 100)}% < ${Math.round(minCoverage * 100)}%)`
+            reason: `Cobertura insuficiente (${Math.round(coverage.coverage * 100)}% < ${Math.round(minCoverage * 100)}%)`,
+            metadata: {
+                coverage: coverage.coverage,
+                minCoverage
+            }
         };
     }
 

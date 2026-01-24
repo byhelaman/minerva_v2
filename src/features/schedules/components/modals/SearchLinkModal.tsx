@@ -8,6 +8,7 @@ import { Loader2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 
 interface SearchLinkModalProps {
     open: boolean;
@@ -22,6 +23,7 @@ interface MeetingRow {
     host_email: string;
     host_name: string;
     created_at: string;
+    join_url?: string;
 }
 
 // Columnas para la tabla de búsqueda
@@ -113,7 +115,18 @@ const searchColumns: ColumnDef<MeetingRow>[] = [
     {
         id: "actions",
         size: 50,
-        cell: () => {
+        cell: ({ row }) => {
+            const meeting = row.original;
+            const hasJoinUrl = !!meeting.join_url;
+
+            const handleCopyDetails = async () => {
+                const details = meeting.join_url
+                    ? `${meeting.topic}\n${meeting.join_url}`
+                    : meeting.topic;
+                await navigator.clipboard.writeText(details);
+                toast.success("Details copied to clipboard");
+            };
+
             return (
                 <div className="flex justify-center">
                     <DropdownMenu>
@@ -124,7 +137,10 @@ const searchColumns: ColumnDef<MeetingRow>[] = [
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={handleCopyDetails}
+                                disabled={!hasJoinUrl}
+                            >
                                 Copy details
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -166,6 +182,7 @@ export function SearchLinkModal({ open, onOpenChange }: SearchLinkModalProps) {
                 host_email: host?.email || 'Unknown',
                 host_name: host?.display_name || 'Unknown',
                 created_at: meeting.start_time,
+                join_url: meeting.join_url,
             };
         });
     }, [meetings, userMap]);
