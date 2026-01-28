@@ -1,0 +1,90 @@
+-- ============================================
+-- Minerva v2 - 006: Microsoft Integration (Vault + Tables)
+-- ============================================
+
+-- =============================================
+-- MICROSOFT ACCOUNT (Vault References)
+-- =============================================
+CREATE TABLE IF NOT EXISTS public.microsoft_account (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    microsoft_user_id TEXT NOT NULL,
+    microsoft_email TEXT NOT NULL,
+    microsoft_name TEXT,
+    access_token_id UUID NOT NULL,
+    refresh_token_id UUID NOT NULL,
+    token_type TEXT DEFAULT 'Bearer',
+    scope TEXT,
+    expires_at TIMESTAMPTZ NOT NULL,
+    connected_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_microsoft_account_single ON public.microsoft_account ((true));
+
+ALTER TABLE public.microsoft_account ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service Role Full Access MS" ON public.microsoft_account
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE OR REPLACE FUNCTION store_microsoft_credentials(
+    p_user_id TEXT,
+    p_email TEXT,
+    p_name TEXT,
+    p_access_token TEXT,
+    p_refresh_token TEXT,
+    p_scope TEXT,
+    p_expires_in INT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, vault, extensions
+AS $$
+DECLARE
+    v_access_id UUID;
+    v_refresh_id UUID;
+    v_expires_at TIMESTAMPTZ;
+    v_access_name TEXT;
+    v_refresh_name TEXT;
+BEGIN
+    v_expires_at := now() + (p_expires_in || ' seconds')::INTERVAL;
+    v_access_name := 'microsoft_access_token_' || p_user_id;
+    v_refresh_name := 'microsoft_refresh_token_' || p_user_id;
+
+    DELETE FROM vault.secrets WHERE name IN (v_access_name, v_refresh_name);
+
+    v_access_id := vault.create_secret(p_access_token, v_access_name, 'Microsoft Access Token');
+    v_refresh_id := vault.create_secret(p_refresh_token, v_refresh_name, 'Microsoft Refresh Token');
+
+    DELETE FROM public.microsoft_account WHERE id != '00000000-0000-0000-0000-000000000000';
+
+    INSERT INTO public.microsoft_account (
+        microsoft_user_id, microsoft_email, microsoft_name,
+        access_token_id, refresh_token_id,
+        scope, expires_at
+    ) VALUES (
+        p_user_id, p_email, p_name,
+        v_access_id, v_refresh_id,
+        p_scope, v_expires_at
+    );
+END;
+$$;
+
+CREATE OR REPLACE VIEW microsoft_credentials_decrypted AS
+SELECT
+    ma.id,
+    ma.microsoft_user_id,
+    ma.microsoft_email,
+    ma.expires_at,
+    s_access.decrypted_secret as access_token,
+    s_refresh.decrypted_secret as refresh_token
+FROM
+    public.microsoft_account ma
+LEFT JOIN vault.decrypted_secrets s_access ON ma.access_token_id = s_access.id
+LEFT JOIN vault.decrypted_secrets s_refresh ON ma.refresh_token_id = s_refresh.id;
+
+REVOKE ALL ON microsoft_credentials_decrypted FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON microsoft_credentials_decrypted TO service_role;

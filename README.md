@@ -39,17 +39,12 @@ Execute each file in Supabase **SQL Editor**, following this order:
 
 | Order | File | Description |
 |-------|------|-------------|
-| 1 | `001_roles_permissions.sql` | Roles and permissions tables + seed data |
-| 2 | `002_profiles.sql` | Profiles table + auto-create triggers |
-| 3 | `003_auth_hook.sql` | Auth Hook for JWT Custom Claims |
-| 4 | `004_functions.sql` | RPCs: get_my_profile, update_my_display_name |
-| 5 | `005_policies.sql` | RLS policies using JWT claims |
-| 6 | `006_security_triggers.sql` | Privilege escalation prevention trigger |
-| 7 | `007_user_management.sql` | User Management RPCs (`create_user`, `delete_user`) |
-| 8 | `008_realtime_security.sql` | Enable Realtime for specific roles |
-| 9 | `009_zoom_connection.sql` | Zoom Integration Tables & Vault Setup |
-| 10 | `010_fix_zoom_rpc.sql` | Robust credential storage RPC (prevents duplicate keys) |
-| 11 | `011_create_zoom_sync_tables.sql` | Tables for syncing Zoom Users and Meetings with RLS |
+| 1 | `001_core_access.sql` | Core tables (roles, permissions) and seed data |
+| 2 | `002_user_management.sql` | Profiles, User Management RPCs (`create_user`, `delete_user`) |
+| 3 | `003_zoom_integration.sql` | Zoom Integration Tables (OAuth tokens, meetings) |
+| 4 | `004_webhooks_bug_reports.sql` | Webhook logs and bug reporting tables |
+| 5 | `005_realtime_security.sql` | Realtime policies and security settings |
+| 6 | `006_microsoft_integration.sql` | Microsoft Integration (OneDrive tokens, Vault) |
 
 ## Integrations
 
@@ -58,6 +53,15 @@ Minerva v2 supports connecting a Zoom account for automated meeting creation.
 - **Documentation**: See **System → Documentation** in the app.
 - **Features**: Auth (OAuth 2.0), Status Check, Disconnect, **Sync Data (Users & Meetings)**.
 - **Security**: Based on Supabase Vault and Server-to-Server OAuth.
+
+### Microsoft Integration 📎
+Minerva v2 supports connecting a Microsoft account for direct file selection from OneDrive.
+- **Features**: 
+    - **Secure Auth**: OAuth 2.0 with PKCE flow.
+    - **Token Storage**: Encrypted storage using Supabase Vault.
+    - **File Browser**: Visual navigation of OneDrive folders.
+    - **Smart Caching**: Instant navigation for visited folders.
+- **Setup**: See [`docs/microsoft_setup.md`](docs/microsoft_setup.md) for step-by-step Azure App Registration instructions.
 
 ### 3. Enable Auth Hook
 
@@ -100,10 +104,10 @@ In **Dashboard → Authentication → Email Templates**:
 ## Authentication Architecture
 
 ```
-┌─────────────┐      ┌──────────────┐    ┌─────────────┐
-│   Client    │ ───▶ │  Supabase    │───▶│  PostgreSQL │
-│   (Tauri)   │      │  Auth + JWT  │    │  + RLS      │
-└─────────────┘      └──────────────┘    └─────────────┘
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│   Client    │ ───▶ │  Supabase    │ ───▶ │  PostgreSQL │
+│   (Tauri)   │      │  Auth + JWT  │      │  + RLS      │
+└─────────────┘      └──────────────┘      └─────────────┘
        │                    │
        │  Custom Claims     │
        │  (user_role,       │

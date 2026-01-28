@@ -8,6 +8,7 @@ import { ProfilePage } from "@/features/profile/components/ProfilePage";
 import { DocsPage } from "@/features/docs/components/DocsPage";
 import { SystemPage } from "@/features/system/components/SystemPage";
 import { LoginPage } from "@/features/auth/components/LoginPage";
+
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
 import { useSettings } from "@/components/settings-provider";
 import { useTheme } from "@/components/theme-provider";
@@ -67,6 +68,7 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/docs" element={<DocsPage />} />
+
           <Route path="/system" element={
             <AdminRoute>
               <SystemPage />

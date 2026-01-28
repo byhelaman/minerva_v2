@@ -8,6 +8,8 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { ZoomIntegration } from "@/features/system/components/ZoomIntegration";
+import { MicrosoftIntegration } from "@/features/system/components/MicrosoftIntegration";
+
 
 export function SystemPage() {
     // const { t } = useTranslation(); // 't' no se usa por ahora en este componente (hardcoded English UI)
@@ -139,9 +141,12 @@ export function SystemPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Zoom Integration - Super Admin only */}
                     <RequirePermission level={100}>
                         <ZoomIntegration />
+                    </RequirePermission>
+
+                    <RequirePermission level={100}>
+                        <MicrosoftIntegration />
                     </RequirePermission>
 
                     {/* System Activity */}

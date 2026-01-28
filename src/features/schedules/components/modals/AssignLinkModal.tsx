@@ -434,7 +434,6 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
                                     if (checked) {
                                         toast.info(
                                             'When this option is enabled, assigned meetings are re-processed. This may increase processing time (approx. 30 seconds).',
-                                            { duration: 6000 }
                                         );
                                     }
                                     setIncludeAssigned(checked);

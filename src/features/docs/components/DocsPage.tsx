@@ -75,7 +75,7 @@ export function DocsPage() {
 
             <div className="grid gap-8 md:grid-cols-[200px_1fr] h-full overflow-hidden">
                 <aside className="hidden md:flex flex-col gap-2 flex-none">
-                    <nav className="grid gap-1">
+                    <nav className="grid gap-1 ml-1 mt-1">
                         {SECTIONS.map((item) => (
                             <Button
                                 key={item.id}
@@ -93,7 +93,7 @@ export function DocsPage() {
                     </nav>
                 </aside>
 
-                <div className="h-full overflow-y-auto scroll-smooth px-[120px]">
+                <div className="h-full overflow-y-auto scroll-smooth px-10 lg:px-20 xl:px-30">
                     <div className="space-y-10 pb-20">
                         {/* Introduction */}
                         <section id="introduction" className="space-y-4">
