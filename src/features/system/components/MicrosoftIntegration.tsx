@@ -20,6 +20,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -34,11 +35,14 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 interface MicrosoftAccount {
     email: string;
     name: string;
     connected_at: string;
+    linked_file_id?: string;
+    linked_file_name?: string;
 }
 
 interface FileSystemItem {
@@ -49,24 +53,85 @@ interface FileSystemItem {
     parentId: string | null;
 }
 
-export function MicrosoftIntegration() {
+interface MicrosoftIntegrationProps {
+    onFileSelect?: (file: { id: string; name: string } | null) => void;
+    currentFile?: { id: string; name: string } | null;
+}
+
+export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftIntegrationProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [account, setAccount] = useState<MicrosoftAccount | null>(null);
     const [isConnecting, setIsConnecting] = useState(false);
     const [isDisconnecting, setIsDisconnecting] = useState(false);
-    const [selectedFile, setSelectedFile] = useState<string | null>(null);
+    const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
     const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
 
-    // File Navigation State
+    // Sync external file state if provided
+    useEffect(() => {
+        if (currentFile !== undefined) {
+            setSelectedFile(currentFile);
+        }
+    }, [currentFile]);
+
+    // ... (rest of state)
+
+    // ... (fetchFiles, effects, auth handlers remain mostly same)
+
+    const handleDisconnect = async () => {
+        try {
+            setIsDisconnecting(true);
+            const { error } = await supabase.functions.invoke('microsoft-auth', {
+                body: { action: 'disconnect' },
+                method: 'POST'
+            });
+
+            if (error) throw error;
+
+            setAccount(null);
+            setSelectedFile(null);
+            if (onFileSelect) onFileSelect(null);
+            setCurrentFolderId(null);
+            setBreadcrumbs([{ id: null, name: "Home" }]);
+            toast.success("Microsoft disconnected");
+        } catch (error) {
+            toast.error("Failed to disconnect");
+        } finally {
+            setIsDisconnecting(false);
+        }
+    };
+
+    const handleSelectFile = async (file: { id: string; name: string }) => {
+        try {
+            // Persist to backend
+            const { error } = await supabase.functions.invoke('microsoft-auth', {
+                body: {
+                    action: 'link-file',
+                    fileId: file.id,
+                    fileName: file.name
+                },
+                method: 'POST'
+            });
+
+            if (error) throw error;
+
+            setSelectedFile(file);
+            if (onFileSelect) onFileSelect(file);
+            setIsFileDialogOpen(false);
+            toast.success(`Linked file: ${file.name}`);
+        } catch (error) {
+            console.error("Failed to link file", error);
+            toast.error("Failed to save file selection");
+        }
+    };
+
+    // Restoring File Navigation State and Logic
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
     const [breadcrumbs, setBreadcrumbs] = useState<{ id: string | null, name: string }[]>([{ id: null, name: "Home" }]);
     const [files, setFiles] = useState<FileSystemItem[]>([]);
     const [isLoadingFiles, setIsLoadingFiles] = useState(false);
     const [fileCache, setFileCache] = useState<Record<string, FileSystemItem[]>>({});
-
-    // Polling Ref
-    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const currentFolderRef = useRef(currentFolderId);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Keep ref in sync
     useEffect(() => {
@@ -138,7 +203,7 @@ export function MicrosoftIntegration() {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                // setIsLoading(true); // Don't block UI entirely, or maybe skeleton?
+                // setIsLoading(true); // Don't block UI entirely
                 const { data, error } = await supabase.functions.invoke('microsoft-auth', {
                     body: { action: 'status' },
                     method: 'POST'
@@ -146,6 +211,12 @@ export function MicrosoftIntegration() {
 
                 if (!error && data?.connected && data?.account) {
                     setAccount(data.account);
+                    // Load linked file if exists
+                    if (data.account.file_id && data.account.file_name) {
+                        const file = { id: data.account.file_id, name: data.account.file_name };
+                        setSelectedFile(file);
+                        if (onFileSelect) onFileSelect(file);
+                    }
                 }
             } catch (error) {
                 console.error("Status check failed", error);
@@ -211,34 +282,6 @@ export function MicrosoftIntegration() {
         }
     };
 
-    const handleDisconnect = async () => {
-        try {
-            setIsDisconnecting(true);
-            const { error } = await supabase.functions.invoke('microsoft-auth', {
-                body: { action: 'disconnect' },
-                method: 'POST'
-            });
-
-            if (error) throw error;
-
-            setAccount(null);
-            setSelectedFile(null);
-            setCurrentFolderId(null);
-            setBreadcrumbs([{ id: null, name: "Home" }]);
-            toast.success("Microsoft disconnected");
-        } catch (error) {
-            toast.error("Failed to disconnect");
-        } finally {
-            setIsDisconnecting(false);
-        }
-    };
-
-    const handleSelectFile = (fileName: string) => {
-        setSelectedFile(fileName);
-        setIsFileDialogOpen(false);
-        toast.success(`Linked file: ${fileName}`);
-    };
-
     const handleNavigate = (folderId: string | null, folderName: string) => {
         setCurrentFolderId(folderId);
         setBreadcrumbs(prev => [...prev, { id: folderId, name: folderName }]);
@@ -255,8 +298,6 @@ export function MicrosoftIntegration() {
         setIsConnecting(false);
         toast.info("Connection cancelled");
     };
-
-    // const currentItems = MOCK_FILESYSTEM.filter(item => item.parentId === currentFolderId);
 
     if (isLoading) {
         return (
@@ -293,12 +334,6 @@ export function MicrosoftIntegration() {
                                         Connected
                                     </span>
                                 </div>
-                                {/* {selectedFile && (
-                                    <div className="flex items-center gap-2 text-sm text-primary">
-                                        <FileSpreadsheet className="size-4" />
-                                        <span>{selectedFile}</span>
-                                    </div>
-                                )} */}
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
@@ -330,7 +365,6 @@ export function MicrosoftIntegration() {
                                             Navigate your folders to find the Excel file.
                                         </DialogDescription>
                                     </DialogHeader>
-
 
                                     {/* Breadcrumbs */}
                                     <div className="my-1 px-1 flex items-center justify-between">
@@ -365,19 +399,20 @@ export function MicrosoftIntegration() {
                                             disabled={isLoadingFiles}
                                             title="Refresh folder"
                                         >
-                                            <RefreshCw className={cn(isLoadingFiles && "animate-spin")} />
+                                            <RefreshCw />
                                         </Button>
                                     </div>
 
                                     <ScrollArea className="h-[300px] border rounded-md">
                                         <div className="p-2 h-full">
                                             {isLoadingFiles ? (
-                                                <div className="flex flex-col items-center justify-center h-full min-h-[280px]">
-                                                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
+                                                <div className="flex flex-col items-center justify-center h-full min-h-[280px] space-y-2">
+                                                    <Loader2 className="h-6 w-6 animate-spin" />
+                                                    <p className="text-sm">Loading files...</p>
                                                 </div>
                                             ) : files.length === 0 ? (
                                                 <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground">
-                                                    <FolderOpen className="mb-2 opacity-20" size={32} />
+                                                    <FolderOpen className="mb-2 opacity-20" size={24} />
                                                     <p className="text-sm">Empty folder</p>
                                                 </div>
                                             ) : (
@@ -396,7 +431,7 @@ export function MicrosoftIntegration() {
                                                                 )}
                                                                 onClick={() => {
                                                                     if (isDisabled) return;
-                                                                    isFolder ? handleNavigate(item.id, item.name) : handleSelectFile(item.name);
+                                                                    isFolder ? handleNavigate(item.id, item.name) : handleSelectFile({ id: item.id, name: item.name });
                                                                 }}
                                                             >
                                                                 <div className="flex items-center gap-2">
@@ -404,12 +439,12 @@ export function MicrosoftIntegration() {
                                                                         "transition-colors",
                                                                         isDisabled ? "text-muted-foreground" : "text-muted-foreground group-hover:text-foreground"
                                                                     )}>
-                                                                        {isFolder ? <Folder className="h-4 w-4" /> : <FileSpreadsheet className={cn("h-4 w-4", selectedFile === item.name ? "text-primary" : "")} />}
+                                                                        {isFolder ? <Folder className="h-4 w-4" /> : <FileSpreadsheet className={cn("h-4 w-4", selectedFile?.id === item.id ? "text-primary" : "")} />}
                                                                     </div>
                                                                     <span className={cn(
                                                                         "text-sm leading-none transition-colors",
                                                                         !isDisabled && "group-hover:text-primary",
-                                                                        selectedFile === item.name ? "font-medium" : ""
+                                                                        selectedFile?.id === item.id ? "font-medium" : ""
                                                                     )}>
                                                                         {item.name}
                                                                     </span>
@@ -418,7 +453,7 @@ export function MicrosoftIntegration() {
                                                                     <span className="text-xs text-muted-foreground">
                                                                         {item.date}
                                                                     </span>
-                                                                    {selectedFile === item.name && !isDisabled && (
+                                                                    {selectedFile?.id === item.id && !isDisabled && (
                                                                         <Check className="h-4 w-4 text-primary" />
                                                                     )}
                                                                 </div>
@@ -429,7 +464,13 @@ export function MicrosoftIntegration() {
                                             )}
                                         </div>
                                     </ScrollArea>
+                                    <DialogFooter>
+                                        <DialogClose asChild>
+                                            <Button variant="secondary">Cancel</Button>
+                                        </DialogClose>
+                                    </DialogFooter>
                                 </DialogContent>
+
                             </Dialog>
                         )}
 
@@ -496,6 +537,6 @@ export function MicrosoftIntegration() {
                     </div>
                 </div>
             </CardContent>
-        </Card >
+        </Card>
     );
 }

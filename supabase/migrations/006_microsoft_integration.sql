@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS public.microsoft_account (
     token_type TEXT DEFAULT 'Bearer',
     scope TEXT,
     expires_at TIMESTAMPTZ NOT NULL,
+    linked_file_id TEXT,
+    linked_file_name TEXT,
     connected_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -49,26 +51,39 @@ DECLARE
     v_expires_at TIMESTAMPTZ;
     v_access_name TEXT;
     v_refresh_name TEXT;
+    v_existing_file_id TEXT;
+    v_existing_file_name TEXT;
 BEGIN
     v_expires_at := now() + (p_expires_in || ' seconds')::INTERVAL;
     v_access_name := 'microsoft_access_token_' || p_user_id;
     v_refresh_name := 'microsoft_refresh_token_' || p_user_id;
 
+    -- Update Vault Secrets
     DELETE FROM vault.secrets WHERE name IN (v_access_name, v_refresh_name);
-
     v_access_id := vault.create_secret(p_access_token, v_access_name, 'Microsoft Access Token');
     v_refresh_id := vault.create_secret(p_refresh_token, v_refresh_name, 'Microsoft Refresh Token');
 
+    -- Get existing linked file info if it's the same user
+    SELECT linked_file_id, linked_file_name 
+    INTO v_existing_file_id, v_existing_file_name
+    FROM public.microsoft_account 
+    WHERE microsoft_user_id = p_user_id
+    LIMIT 1;
+
+    -- Clear table (Single account policy)
     DELETE FROM public.microsoft_account WHERE id != '00000000-0000-0000-0000-000000000000';
 
+    -- Insert new record with preserved file info
     INSERT INTO public.microsoft_account (
         microsoft_user_id, microsoft_email, microsoft_name,
         access_token_id, refresh_token_id,
-        scope, expires_at
+        scope, expires_at,
+        linked_file_id, linked_file_name
     ) VALUES (
         p_user_id, p_email, p_name,
         v_access_id, v_refresh_id,
-        p_scope, v_expires_at
+        p_scope, v_expires_at,
+        v_existing_file_id, v_existing_file_name
     );
 END;
 $$;
@@ -88,3 +103,22 @@ LEFT JOIN vault.decrypted_secrets s_refresh ON ma.refresh_token_id = s_refresh.i
 
 REVOKE ALL ON microsoft_credentials_decrypted FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON microsoft_credentials_decrypted TO service_role;
+
+CREATE OR REPLACE FUNCTION update_microsoft_linked_file(
+    p_file_id TEXT,
+    p_file_name TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    UPDATE public.microsoft_account
+    SET 
+        linked_file_id = p_file_id,
+        linked_file_name = p_file_name,
+        updated_at = now()
+    WHERE id IS NOT NULL;
+END;
+$$;

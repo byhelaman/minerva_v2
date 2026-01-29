@@ -7,6 +7,7 @@ import { SettingsPage } from "@/features/settings/components/SettingsPage";
 import { ProfilePage } from "@/features/profile/components/ProfilePage";
 import { DocsPage } from "@/features/docs/components/DocsPage";
 import { SystemPage } from "@/features/system/components/SystemPage";
+import { DataSourcesPage } from "@/features/system/components/DataSourcesPage";
 import { LoginPage } from "@/features/auth/components/LoginPage";
 
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
@@ -73,6 +74,10 @@ function App() {
             <AdminRoute>
               <SystemPage />
             </AdminRoute>
+          } />
+
+          <Route path="/data-sources" element={
+            <DataSourcesPage />
           } />
         </Route>
       </Routes>

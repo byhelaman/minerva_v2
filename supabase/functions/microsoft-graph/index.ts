@@ -83,13 +83,103 @@ serve(async (req: Request) => {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         await verifyPermission(req, supabase, 'settings.manage')
 
-        const { action, folderId } = await req.json()
+        const { action, folderId, fileId, sheetId, tableId, range } = await req.json()
 
         if (action === 'list-children') {
             const token = await getAccessToken(supabase)
             const targetId = folderId || 'root'
 
             const graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${targetId}/children?$select=id,name,lastModifiedDateTime,file,folder`
+            const response = await fetch(graphUrl, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error?.message || 'Graph API Error')
+            }
+
+            const data = await response.json()
+            return new Response(JSON.stringify(data), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+        }
+
+        if (action === 'list-worksheets' || action === 'list-content') {
+            // fileId is already destructured from top-level body
+            if (!fileId) throw new Error('File ID is required')
+
+            const token = await getAccessToken(supabase)
+
+            // Fetch Sheets and Tables in parallel
+            const sheetsUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets?$select=id,name,position,visibility`
+            const tablesUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables?$select=id,name,showHeaders`
+
+            const [sheetsRes, tablesRes] = await Promise.all([
+                fetch(sheetsUrl, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(tablesUrl, { headers: { 'Authorization': `Bearer ${token}` } })
+            ])
+
+            if (!sheetsRes.ok) {
+                const err = await sheetsRes.json()
+                if (err.error?.code === 'ItemNotFound') {
+                    throw new Error('File not found or not a valid Excel workbook')
+                }
+                throw new Error(err.error?.message || 'Graph API Error (Sheets)')
+            }
+
+            // Tables are optional, don't fail hard if endpoint technically differs or is empty, 
+            // but usually it works on workbooks.
+            let tables = []
+            if (tablesRes.ok) {
+                const tablesData = await tablesRes.json()
+                tables = tablesData.value
+            }
+
+            const sheetsData = await sheetsRes.json()
+
+            // Normalize output
+            // If action is legacy 'list-worksheets', strictly speaking we used to return just sheets value.
+            // But to support the new UI request effectively, let's return a unified list or object.
+            // The frontend expects `data.value`. 
+            // Let's return a combined list if the frontend is updated to handle it.
+            // Actually, let's return { value: [...sheets, ...tables] } but with types distinguished.
+
+            const combined = [
+                ...sheetsData.value.map((s: any) => ({ ...s, type: 'sheet' })),
+                ...tables.map((t: any) => ({ ...t, type: 'table' }))
+            ]
+
+            return new Response(JSON.stringify({ value: combined }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+        }
+
+        if (action === 'get-range') {
+            // fileId, sheetId, range are already destructured
+            if (!fileId) throw new Error('File ID is required')
+            if (!sheetId && !tableId) throw new Error('Sheet ID or Table ID is required')
+
+            const token = await getAccessToken(supabase)
+            let graphUrl = ''
+
+            if (tableId) {
+                // Get table range
+                // https://graph.microsoft.com/v1.0/me/drive/items/{id}/workbook/tables/{id}/range
+                graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/${tableId}/range`
+            } else {
+                // Get sheet range
+                graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetId}/`
+                if (range) {
+                    graphUrl += `range(address='${range}')`
+                } else {
+                    graphUrl += `usedRange`
+                }
+            }
+
+            // Add select to optimize
+            graphUrl += `?$select=address,columnCount,rowCount,text`
+
             const response = await fetch(graphUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             })

@@ -209,7 +209,7 @@ export function SearchLinkModal({ open, onOpenChange }: SearchLinkModalProps) {
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-auto p-2">
+                <div className="flex-1 overflow-auto pr-2">
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />

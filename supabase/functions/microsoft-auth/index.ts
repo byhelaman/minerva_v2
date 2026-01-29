@@ -54,6 +54,7 @@ serve(async (req: Request) => {
                 case 'init': return await handleInit(req, corsHeaders)
                 case 'status': return await handleStatus(req, corsHeaders)
                 case 'disconnect': return await handleDisconnect(req, corsHeaders)
+                case 'link-file': return await handleLinkFile(req, body, corsHeaders)
                 default:
                     console.error('Invalid action received')
                     return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -185,7 +186,7 @@ async function handleStatus(req: Request, corsHeaders: Record<string, string>): 
 
     const { data: account, error } = await supabase
         .from('microsoft_account')
-        .select('microsoft_email, microsoft_name, expires_at, connected_at')
+        .select('microsoft_email, microsoft_name, expires_at, connected_at, linked_file_id, linked_file_name')
         .single()
 
     if (error || !account) {
@@ -200,9 +201,48 @@ async function handleStatus(req: Request, corsHeaders: Record<string, string>): 
             email: account.microsoft_email,
             name: account.microsoft_name,
             expires_at: account.expires_at,
-            connected_at: account.connected_at
+            connected_at: account.connected_at,
+            file_id: account.linked_file_id,
+            file_name: account.linked_file_name
         }
     }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+}
+
+// Types
+interface LinkFileBody {
+    fileId?: string;
+    fileName?: string;
+}
+
+// === LINK FILE ===
+async function handleLinkFile(req: Request, body: LinkFileBody, corsHeaders: Record<string, string>): Promise<Response> {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+    // Verify RBAC
+    await verifyPermission(req, supabase, 'settings.manage')
+
+    const { fileId, fileName } = body
+
+    if (!fileId || !fileName) {
+        return new Response(JSON.stringify({ error: 'Missing fileId or fileName' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+    }
+
+    const { error } = await supabase.rpc('update_microsoft_linked_file', {
+        p_file_id: fileId,
+        p_file_name: fileName
+    })
+
+    if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 }

@@ -245,7 +245,7 @@ export function ScheduleDataTable<TData, TValue>({
     }, [tableData]);
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="space-y-4 p-1">
             {/* Toolbar with Search, Filters, and View Options */}
             <DataTableToolbar
                 table={table}
@@ -268,7 +268,7 @@ export function ScheduleDataTable<TData, TValue>({
             />
 
             {/* Table */}
-            <div className="overflow-hidden rounded-md border">
+            <div className="rounded-md border">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

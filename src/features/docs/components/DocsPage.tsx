@@ -74,13 +74,13 @@ export function DocsPage() {
             </div>
 
             <div className="grid gap-8 md:grid-cols-[200px_1fr] h-full overflow-hidden">
-                <aside className="hidden md:flex flex-col gap-2 flex-none">
-                    <nav className="grid gap-1 ml-1 mt-1">
+                <aside className="hidden md:flex flex-col gap-1 flex-none p-1">
+                    <h3 className="text-sm font-medium text-muted-foreground px-2 mb-2">Sections</h3>
+                    <nav className="grid gap-1">
                         {SECTIONS.map((item) => (
                             <Button
                                 key={item.id}
                                 variant="link"
-                                size="sm"
                                 onClick={(e) => handleScrollTo(e, item.id)}
                                 className={`w-fit justify-start ${activeSection === item.id
                                     ? ''

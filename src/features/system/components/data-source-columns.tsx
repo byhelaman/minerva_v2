@@ -1,10 +1,10 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { type Schedule } from "@schedules/utils/excel-parser";
-import { DataTableColumnHeader } from "./data-table-column-header";
-import { DataTableRowActions } from "./data-table-row-actions";
+import { type Schedule } from "@/features/schedules/utils/excel-parser";
+import { DataTableColumnHeader } from "@/features/schedules/components/table/data-table-column-header";
+import { DataTableRowActions } from "@/features/schedules/components/table/data-table-row-actions";
 
-export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<Schedule>[] => [
+export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDef<Schedule>[] => [
     {
         id: "select",
         size: 36,
@@ -36,13 +36,15 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
     },
     {
         accessorKey: "date",
+        size: 120,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Date" className="justify-center" />
         ),
-        cell: ({ row }) => <div className="w-[80px] mx-auto">{row.getValue("date")}</div>,
+        cell: ({ row }) => <div className="w-[100px] text-center">{row.getValue("date")}</div>,
     },
     {
         accessorKey: "shift",
+        size: 100,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Shift" />
         ),
@@ -58,55 +60,36 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
             <DataTableColumnHeader column={column} title="Branch" />
         ),
         cell: ({ row }) => <div>{row.getValue("branch")}</div>,
-        // Filtro con coincidencia parcial:
-        // - "CORPORATE" coincide con "CORPORATE" y "CORPORATE/KIDS"
-        // - "KIDS" coincide con cualquier branch que contenga "KIDS"
         filterFn: (row, id, filterValues: string[]) => {
             const cellValue = row.getValue(id) as string;
             return filterValues.some((filter) => cellValue.includes(filter));
         },
     },
     {
-        accessorKey: "start_time",
-        size: 130,
-        header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Time" className="justify-center" />
-        ),
-        cell: ({ row }) => (
-            <div className="mx-auto text-center">
-                {row.getValue("start_time")} - {row.original.end_time}
-            </div>
-        ),
-        // Filtro por hora: extrae la hora del tiempo (ej: "08" de "08:30")
-        filterFn: (row, id, filterValues: string[]) => {
-            const cellValue = row.getValue(id) as string;
-            const hour = cellValue?.substring(0, 2); // Extrae "HH" de "HH:MM"
-            return filterValues.includes(hour);
-        },
-    },
-    {
         accessorKey: "instructor",
-        size: 150,
+        size: 200,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Instructor" />
         ),
         cell: ({ row }) => (
-            <div>{row.getValue("instructor")}</div>
+            <div className="truncate w-[180px]" title={row.getValue("instructor")}>{row.getValue("instructor")}</div>
         ),
     },
     {
         accessorKey: "program",
+        size: 400,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Program" />
         ),
         cell: ({ row }) => (
-            <div>
+            <div className="truncate max-w-[380px]" title={row.getValue("program")}>
                 {row.getValue("program")}
             </div>
         ),
     },
     {
         accessorKey: "minutes",
+        size: 70,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Mins" className="justify-center" />
         ),
@@ -114,6 +97,7 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
     },
     {
         accessorKey: "units",
+        size: 70,
         header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Units" className="justify-center" />
         ),
@@ -121,6 +105,7 @@ export const getScheduleColumns = (onDelete?: (s: Schedule) => void): ColumnDef<
     },
     {
         id: "actions",
+        size: 50,
         cell: ({ row }) => <DataTableRowActions row={row} onDelete={onDelete} />,
     },
 ];

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "@/components/auth-provider"
+import { RequirePermission } from "./RequirePermission"
 
 export function UserNav() {
     const { profile, signOut } = useAuth();
@@ -79,12 +80,19 @@ export function UserNav() {
                         </Link>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                    <Link to="/system">
-                        System
-                    </Link>
-                </DropdownMenuItem>
+                <RequirePermission permission="settings.manage">
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                        <Link to="/system">
+                            System
+                        </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                        <Link to="/data-sources">
+                            Data Sources
+                        </Link>
+                    </DropdownMenuItem>
+                </RequirePermission>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                     Log out
