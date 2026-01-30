@@ -29,7 +29,14 @@ interface DataTableFacetedFilterProps<TData, TValue> {
         value: string;
         icon?: React.ComponentType<{ className?: string }>;
     }[];
-    /** Si es true, usa coincidencia parcial para calcular conteos */
+    /** 
+     * Strategy for counting matches:
+     * - 'exact': Exact match (default)
+     * - 'includes': Option value is included in the facet value
+     * - 'startsWith': Facet value starts with option value
+     */
+    matchMode?: "exact" | "includes" | "startsWith";
+    /** @deprecated use matchMode="includes" instead */
     usePartialMatch?: boolean;
     disabled?: boolean;
 }
@@ -39,28 +46,32 @@ export function DataTableFacetedFilter<TData, TValue>({
     title,
     options,
     usePartialMatch = false,
+    matchMode = usePartialMatch ? "includes" : "exact",
     disabled,
 }: DataTableFacetedFilterProps<TData, TValue>) {
     const facets = column?.getFacetedUniqueValues();
     const selectedValues = new Set(column?.getFilterValue() as string[]);
 
-    // Calcular conteos para coincidencia parcial
-    // Para cada opción, suma todos los facets que contengan ese valor
+    // Calcular conteos según el modo
     const getCount = React.useCallback((optionValue: string): number | undefined => {
         if (!facets) return undefined;
 
-        if (usePartialMatch) {
-            let count = 0;
-            facets.forEach((facetCount, facetValue) => {
-                if (String(facetValue).includes(optionValue)) {
-                    count += facetCount;
-                }
-            });
-            return count > 0 ? count : undefined;
+        if (matchMode === "exact") {
+            return facets.get(optionValue);
         }
 
-        return facets.get(optionValue);
-    }, [facets, usePartialMatch]);
+        let count = 0;
+        facets.forEach((facetCount, facetValue) => {
+            const valStr = String(facetValue);
+            if (matchMode === "includes" && valStr.includes(optionValue)) {
+                count += facetCount;
+            } else if (matchMode === "startsWith" && valStr.startsWith(optionValue)) {
+                count += facetCount;
+            }
+        });
+
+        return count > 0 ? count : undefined;
+    }, [facets, matchMode]);
 
     return (
         <Popover>
@@ -68,27 +79,32 @@ export function DataTableFacetedFilter<TData, TValue>({
                 <Button variant="outline" size="sm" className="h-8 border-dashed" disabled={disabled}>
                     <PlusCircle />
                     {title}
-                    {selectedValues?.size > 0 && (
-                        <>
-                            <Separator orientation="vertical" className="mx-2 h-4" />
-                            <Badge
-                                variant="secondary"
-                                className="rounded-sm px-1 font-normal lg:hidden"
-                            >
-                                {selectedValues.size}
-                            </Badge>
-                            <div className="hidden gap-1 lg:flex">
-                                {selectedValues.size > 2 ? (
-                                    <Badge
-                                        variant="secondary"
-                                        className="rounded-sm px-1 font-normal"
-                                    >
-                                        {selectedValues.size} selected
-                                    </Badge>
-                                ) : (
-                                    options
-                                        .filter((option) => selectedValues.has(option.value))
-                                        .map((option) => (
+                    {(() => {
+                        // Calcular badges visibles antes de renderizar
+                        const visibleBadges = options.filter((option) => selectedValues.has(option.value));
+                        const hasVisibleBadges = selectedValues?.size > 2 || visibleBadges.length > 0;
+
+                        if (!selectedValues?.size || !hasVisibleBadges) return null;
+
+                        return (
+                            <>
+                                <Separator orientation="vertical" className="mx-2 h-4" />
+                                <Badge
+                                    variant="secondary"
+                                    className="rounded-sm px-1 font-normal lg:hidden"
+                                >
+                                    {selectedValues.size}
+                                </Badge>
+                                <div className="hidden gap-1 lg:flex">
+                                    {selectedValues.size > 2 ? (
+                                        <Badge
+                                            variant="secondary"
+                                            className="rounded-sm px-1 font-normal"
+                                        >
+                                            {selectedValues.size} selected
+                                        </Badge>
+                                    ) : (
+                                        visibleBadges.map((option) => (
                                             <Badge
                                                 variant="secondary"
                                                 key={option.value}
@@ -97,10 +113,11 @@ export function DataTableFacetedFilter<TData, TValue>({
                                                 {option.label}
                                             </Badge>
                                         ))
-                                )}
-                            </div>
-                        </>
-                    )}
+                                    )}
+                                </div>
+                            </>
+                        );
+                    })()}
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[200px] p-0" align="start">

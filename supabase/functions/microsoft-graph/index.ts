@@ -48,7 +48,7 @@ async function getAccessToken(supabase: any) {
                 client_secret: MS_CLIENT_SECRET,
                 refresh_token: creds.refresh_token,
                 grant_type: 'refresh_token',
-                scope: 'offline_access User.Read Files.Read.All'
+                scope: 'offline_access User.Read Files.Read.All Files.ReadWrite.All'
             })
         })
 
@@ -83,7 +83,9 @@ serve(async (req: Request) => {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         await verifyPermission(req, supabase, 'settings.manage')
 
-        const { action, folderId, fileId, sheetId, tableId, range } = await req.json()
+        const { action, folderId, fileId, sheetId, tableId, range, name, values } = await req.json()
+
+        // === READ ACTIONS ===
 
         if (action === 'list-children') {
             const token = await getAccessToken(supabase)
@@ -106,12 +108,10 @@ serve(async (req: Request) => {
         }
 
         if (action === 'list-worksheets' || action === 'list-content') {
-            // fileId is already destructured from top-level body
             if (!fileId) throw new Error('File ID is required')
 
             const token = await getAccessToken(supabase)
 
-            // Fetch Sheets and Tables in parallel
             const sheetsUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets?$select=id,name,position,visibility`
             const tablesUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables?$select=id,name,showHeaders`
 
@@ -128,8 +128,6 @@ serve(async (req: Request) => {
                 throw new Error(err.error?.message || 'Graph API Error (Sheets)')
             }
 
-            // Tables are optional, don't fail hard if endpoint technically differs or is empty, 
-            // but usually it works on workbooks.
             let tables = []
             if (tablesRes.ok) {
                 const tablesData = await tablesRes.json()
@@ -137,13 +135,6 @@ serve(async (req: Request) => {
             }
 
             const sheetsData = await sheetsRes.json()
-
-            // Normalize output
-            // If action is legacy 'list-worksheets', strictly speaking we used to return just sheets value.
-            // But to support the new UI request effectively, let's return a unified list or object.
-            // The frontend expects `data.value`. 
-            // Let's return a combined list if the frontend is updated to handle it.
-            // Actually, let's return { value: [...sheets, ...tables] } but with types distinguished.
 
             const combined = [
                 ...sheetsData.value.map((s: any) => ({ ...s, type: 'sheet' })),
@@ -156,7 +147,6 @@ serve(async (req: Request) => {
         }
 
         if (action === 'get-range') {
-            // fileId, sheetId, range are already destructured
             if (!fileId) throw new Error('File ID is required')
             if (!sheetId && !tableId) throw new Error('Sheet ID or Table ID is required')
 
@@ -164,11 +154,8 @@ serve(async (req: Request) => {
             let graphUrl = ''
 
             if (tableId) {
-                // Get table range
-                // https://graph.microsoft.com/v1.0/me/drive/items/{id}/workbook/tables/{id}/range
                 graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/${tableId}/range`
             } else {
-                // Get sheet range
                 graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetId}/`
                 if (range) {
                     graphUrl += `range(address='${range}')`
@@ -177,7 +164,6 @@ serve(async (req: Request) => {
                 }
             }
 
-            // Add select to optimize
             graphUrl += `?$select=address,columnCount,rowCount,text`
 
             const response = await fetch(graphUrl, {
@@ -187,6 +173,99 @@ serve(async (req: Request) => {
             if (!response.ok) {
                 const err = await response.json()
                 throw new Error(err.error?.message || 'Graph API Error')
+            }
+
+            const data = await response.json()
+            return new Response(JSON.stringify(data), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+        }
+
+        // === WRITE ACTIONS ===
+
+        if (action === 'create-worksheet') {
+            if (!fileId || !name) throw new Error('File ID and Name are required')
+            const token = await getAccessToken(supabase)
+
+            const graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets`
+            const response = await fetch(graphUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name })
+            })
+
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error?.message || 'Failed to create worksheet')
+            }
+
+            const data = await response.json()
+            return new Response(JSON.stringify(data), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+        }
+
+        if (action === 'update-range') {
+            if (!fileId || !sheetId || !values) throw new Error('File ID, Sheet ID and Values are required')
+            const token = await getAccessToken(supabase)
+
+            // If range is provided, use it (e.g. A1). If not, default to A1 (start of sheet)
+            // Note: To overwrite, we usually target A1 and let Excel expand the range.
+            const targetRange = range || 'A1'
+            const graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetId}/range(address='${targetRange}')`
+
+            const response = await fetch(graphUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ values })
+            })
+
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error?.message || 'Failed to update range')
+            }
+
+            const data = await response.json()
+            return new Response(JSON.stringify(data), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            })
+        }
+
+        if (action === 'append-row') {
+            if (!fileId || (!tableId && !sheetId) || !values) throw new Error('File ID, Table/Sheet ID and Values are required')
+            const token = await getAccessToken(supabase)
+
+            let graphUrl = ''
+            // Prefer Table Append if tableId is given (structured)
+            if (tableId) {
+                graphUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/tables/${tableId}/rows`
+            } else {
+                // If only sheetId, we can't easily "append" without knowing the last row.
+                // But for pure tables, usually we use table endpoints.
+                // If it's just a raw sheet, we might need to find the last used row first.
+                // For Incidences, we strongly recommend using a Pivot Table or ListObject (Table).
+                // Let's assume Table for now as it's cleaner.
+                throw new Error('Append Row currently requires a Table ID')
+            }
+
+            const response = await fetch(graphUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ values }) // Array of arrays
+            })
+
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error?.message || 'Failed to append row')
             }
 
             const data = await response.json()

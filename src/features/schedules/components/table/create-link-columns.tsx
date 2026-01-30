@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CheckCircle2, HelpCircle, RefreshCw, MoreHorizontal, Hand, Plus, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 
 // Tipos para el resultado de validación
 export type ValidationStatus = 'to_create' | 'exists' | 'ambiguous' | 'manual';
@@ -33,6 +34,7 @@ export interface ValidationResult {
         matchedTopic?: string;
         host_id?: string;
     };
+    start_time?: string; // HH:MM format for daily meetings
 }
 
 // Estilos de badge por status
@@ -69,13 +71,14 @@ const StatusBadge = forwardRef<HTMLDivElement, { status: ValidationStatus } & Re
 });
 StatusBadge.displayName = "StatusBadge";
 
-// Columnas para la tabla de validación en CreateLinkModal
 export const getCreateLinkColumns = (
     hostMap: Map<string, string> = new Map(),
     onSelectCandidate?: (rowId: string, candidate: { meeting_id: string; topic: string; join_url?: string; host_id?: string } | null) => void,
     onMarkAsNew?: (rowId: string) => void,
     onRevertToAmbiguous?: (rowId: string) => void,
-    onRevertToExists?: (rowId: string) => void
+    onRevertToExists?: (rowId: string) => void,
+    dailyOnly?: boolean,
+    onTimeChange?: (rowId: string, time: string) => void
 ): ColumnDef<ValidationResult>[] => [
         {
             id: "select",
@@ -323,6 +326,34 @@ export const getCreateLinkColumns = (
                 );
             },
         },
+        // Time column - only visible when dailyOnly is true
+        ...(dailyOnly ? [{
+            id: "start_time",
+            size: 90,
+            header: () => (
+                <div className="flex items-center justify-center gap-1 font-medium text-muted-foreground">
+                    Time
+                </div>
+            ),
+            cell: ({ row }: { row: any }) => {
+                const result = row.original as ValidationResult;
+                const status = result.status;
+
+                // Only show input for 'to_create' status
+                if (status !== 'to_create') {
+                    return <div className="text-center text-muted-foreground">—</div>;
+                }
+
+                return (
+                    <Input
+                        type="time"
+                        value={result.start_time || ''}
+                        onChange={(e) => onTimeChange?.(result.id, e.target.value)}
+                        className="h-8 w-full text-center text-sm font-mono [&::-webkit-calendar-picker-indicator]:hidden"
+                    />
+                );
+            },
+        } as ColumnDef<ValidationResult>] : []),
         {
             id: "actions",
             size: 50,

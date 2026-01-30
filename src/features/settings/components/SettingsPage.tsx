@@ -38,27 +38,27 @@ export function SettingsPage() {
         try {
             let filesDeleted = 0;
 
-            // Delete schedule autosave
+            // Eliminar autoguardado de horarios
             const autosaveExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
             if (autosaveExists) {
                 await remove(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
                 filesDeleted++;
             }
 
-            // Delete settings file
+            // Eliminar archivo de configuración
             const settingsExists = await exists(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
             if (settingsExists) {
                 await remove(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
                 filesDeleted++;
             }
 
-            // Reset settings to defaults in memory
+            // Reiniciar configuración a valores por defecto en memoria
             updateSetting("actionsRespectFilters", false);
             updateSetting("autoSave", true);
             updateSetting("theme", "system");
             updateSetting("openAfterExport", true);
             updateSetting("clearScheduleOnLoad", false);
-            setTheme("system"); // Apply theme reset
+            setTheme("system"); // Aplicar reinicio de tema
 
             if (filesDeleted > 0) {
                 toast.success("Cache cleared successfully", {
@@ -104,7 +104,7 @@ export function SettingsPage() {
                                     value={settings.theme}
                                     onValueChange={(value: "light" | "dark" | "system") => {
                                         updateSetting("theme", value);
-                                        setTheme(value); // Apply to DOM
+                                        setTheme(value); // Aplicar al DOM
                                     }}
                                 >
                                     <SelectTrigger className="w-[160px]">

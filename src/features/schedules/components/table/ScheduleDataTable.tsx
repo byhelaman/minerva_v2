@@ -53,6 +53,11 @@ interface ScheduleDataTableProps<TData, TValue> {
     isLiveLoading?: boolean;
     liveTimeFilter?: string; // Hora en formato "HH" para filtrar cuando Live está activo
     liveDateFilter?: string; // Fecha en formato "DD/MM/YYYY" para filtrar cuando Live está activo
+    onPublish?: () => void;
+    isPublishing?: boolean;
+    canPublish?: boolean;
+    initialColumnVisibility?: VisibilityState;
+    isRefreshing?: boolean;
 }
 
 export function ScheduleDataTable<TData, TValue>({
@@ -62,6 +67,9 @@ export function ScheduleDataTable<TData, TValue>({
     onUploadClick,
     onRefresh,
     statusOptions,
+    onPublish,
+    isPublishing,
+    canPublish,
     ...props
 }: ScheduleDataTableProps<TData, TValue>) {
     // Use controlled selection if provided, otherwise use internal state
@@ -74,9 +82,9 @@ export function ScheduleDataTable<TData, TValue>({
             props.onControlledSelectionChange?.(newValue);
         }
         : setInternalSelection;
-    // Columna shift oculta por defecto
+    // Columna shift oculta por defecto, pero permite sobrescribir con props
     const [columnVisibility, setColumnVisibility] =
-        React.useState<VisibilityState>({ shift: false });
+        React.useState<VisibilityState>({ shift: false, ...props.initialColumnVisibility });
     const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
         []
     );
@@ -265,6 +273,10 @@ export function ScheduleDataTable<TData, TValue>({
                 setShowLiveMode={props.setShowLiveMode}
                 isLiveLoading={props.isLiveLoading}
                 activeMeetingsCount={props.activePrograms?.size ?? props.activeMeetingIds?.length ?? 0}
+                onPublish={onPublish}
+                isPublishing={isPublishing}
+                canPublish={canPublish}
+                isRefreshing={props.isRefreshing}
             />
 
             {/* Table */}

@@ -54,7 +54,7 @@ serve(async (req: Request) => {
                 case 'init': return await handleInit(req, corsHeaders)
                 case 'status': return await handleStatus(req, corsHeaders)
                 case 'disconnect': return await handleDisconnect(req, corsHeaders)
-                case 'link-file': return await handleLinkFile(req, body, corsHeaders)
+                case 'update-config': return await handleUpdateConfig(req, body, corsHeaders)
                 default:
                     console.error('Invalid action received')
                     return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -77,28 +77,26 @@ serve(async (req: Request) => {
     }
 })
 
-// === INIT ===
+// === INIT, CALLBACK === (Unchanged, so we keep previous logic if we were editing partially, but here we replace all to be safe or use partials. 
+// Since replace_file_content replaces a block, I will include INIT and CALLBACK as is to avoid breaking them if I replace the whole file.
+// Or I can target specific functions. 
+// The user asked to "Replace file content". I will provide the whole file structure but with the requested changes.
+
+// ... (INIT and CALLBACK are same as before, I will copy them for completeness in the ReplacementContent)
+
 async function handleInit(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-    // Verify RBAC
     const user = await verifyPermission(req, supabase, 'settings.manage')
+    const { data: state, error: stateError } = await supabase.rpc('create_oauth_state', { p_user_id: user.id })
 
-    // Create state
-    const { data: state, error: stateError } = await supabase.rpc('create_oauth_state', {
-        p_user_id: user.id
-    })
-
-    if (stateError || !state) {
-        throw new Error('Error creating OAuth state')
-    }
+    if (stateError || !state) throw new Error('Error creating OAuth state')
 
     const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize')
     authUrl.searchParams.set('client_id', MS_CLIENT_ID)
     authUrl.searchParams.set('response_type', 'code')
     authUrl.searchParams.set('redirect_uri', MS_REDIRECT_URI)
     authUrl.searchParams.set('response_mode', 'query')
-    authUrl.searchParams.set('scope', 'offline_access User.Read Files.Read.All')
+    authUrl.searchParams.set('scope', 'offline_access User.Read Files.Read.All Files.ReadWrite.All') // Added Write Scope
     authUrl.searchParams.set('state', state)
 
     return new Response(JSON.stringify({ url: authUrl.toString() }), {
@@ -106,8 +104,8 @@ async function handleInit(req: Request, corsHeaders: Record<string, string>): Pr
     })
 }
 
-// === CALLBACK ===
 async function handleCallback(url: URL, corsHeaders: Record<string, string>): Promise<Response> {
+    // ... (Same implementation as before)
     const code = url.searchParams.get('code')
     const state = url.searchParams.get('state')
     const error = url.searchParams.get('error')
@@ -116,22 +114,13 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
     if (!code || !state) return new Response('Missing code or state', { status: 400 })
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    const { data: userId, error: stateError } = await supabase.rpc('validate_oauth_state', { p_state: state })
 
-    // Validate State
-    const { data: userId, error: stateError } = await supabase.rpc('validate_oauth_state', {
-        p_state: state
-    })
+    if (stateError || !userId) return new Response('Invalid or expired state', { status: 400 })
 
-    if (stateError || !userId) {
-        return new Response('Invalid or expired state', { status: 400 })
-    }
-
-    // Exchange Token
     const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
             client_id: MS_CLIENT_ID,
             client_secret: MS_CLIENT_SECRET,
@@ -147,8 +136,6 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
     }
 
     const tokens = await tokenResponse.json()
-
-    // Get User Info
     const userResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
         headers: { 'Authorization': `Bearer ${tokens.access_token}` }
     })
@@ -156,7 +143,6 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
     if (!userResponse.ok) return new Response('Error getting user info', { status: 400 })
     const msUser = await userResponse.json()
 
-    // Store in Vault
     const { error: rpcError } = await supabase.rpc('store_microsoft_credentials', {
         p_user_id: msUser.id,
         p_email: msUser.userPrincipalName || msUser.mail,
@@ -167,10 +153,7 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
         p_expires_in: tokens.expires_in
     })
 
-    if (rpcError) {
-        console.error('Credential storage failed', rpcError)
-        return new Response(`Database Error: ${rpcError.message}`, { status: 500 })
-    }
+    if (rpcError) return new Response(`Database Error: ${rpcError.message}`, { status: 500 })
 
     return new Response('Microsoft connected successfully!\nYou can close this window.', {
         headers: { 'Content-Type': 'text/plain' }
@@ -180,13 +163,11 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
 // === STATUS ===
 async function handleStatus(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-    // Verify RBAC
     await verifyPermission(req, supabase, 'settings.manage')
 
     const { data: account, error } = await supabase
         .from('microsoft_account')
-        .select('microsoft_email, microsoft_name, expires_at, connected_at, linked_file_id, linked_file_name')
+        .select('microsoft_email, microsoft_name, expires_at, connected_at, schedules_folder_id, schedules_folder_name, incidences_file_id, incidences_file_name')
         .single()
 
     if (error || !account) {
@@ -202,38 +183,44 @@ async function handleStatus(req: Request, corsHeaders: Record<string, string>): 
             name: account.microsoft_name,
             expires_at: account.expires_at,
             connected_at: account.connected_at,
-            file_id: account.linked_file_id,
-            file_name: account.linked_file_name
+            // New config fields
+            schedules_folder: {
+                id: account.schedules_folder_id,
+                name: account.schedules_folder_name
+            },
+            incidences_file: {
+                id: account.incidences_file_id,
+                name: account.incidences_file_name
+            }
         }
     }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 }
 
-// Types
-interface LinkFileBody {
-    fileId?: string;
-    fileName?: string;
+// === UPDATE CONFIG ===
+interface UpdateConfigBody {
+    type: 'schedules_folder' | 'incidences_file';
+    id: string;
+    name: string;
 }
 
-// === LINK FILE ===
-async function handleLinkFile(req: Request, body: LinkFileBody, corsHeaders: Record<string, string>): Promise<Response> {
+async function handleUpdateConfig(req: Request, body: UpdateConfigBody, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-    // Verify RBAC
     await verifyPermission(req, supabase, 'settings.manage')
 
-    const { fileId, fileName } = body
+    const { type, id, name } = body
 
-    if (!fileId || !fileName) {
-        return new Response(JSON.stringify({ error: 'Missing fileId or fileName' }), {
+    if (!type || !id || !name) {
+        return new Response(JSON.stringify({ error: 'Missing type, id or name' }), {
             status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
     }
 
-    const { error } = await supabase.rpc('update_microsoft_linked_file', {
-        p_file_id: fileId,
-        p_file_name: fileName
+    const { error } = await supabase.rpc('update_microsoft_config', {
+        p_type: type,
+        p_id: id,
+        p_name: name
     })
 
     if (error) {
@@ -250,12 +237,8 @@ async function handleLinkFile(req: Request, body: LinkFileBody, corsHeaders: Rec
 // === DISCONNECT ===
 async function handleDisconnect(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-    // Verify RBAC
     await verifyPermission(req, supabase, 'settings.manage')
-
     await supabase.from('microsoft_account').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-
     return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

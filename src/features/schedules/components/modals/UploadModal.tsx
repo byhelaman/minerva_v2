@@ -1,5 +1,5 @@
 import { useCallback, useState, type DragEvent } from "react";
-import { Upload, Trash2, File, Loader2 } from "lucide-react";
+import { Upload, Trash2, Loader2, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -25,6 +25,15 @@ interface UploadModalProps {
 }
 
 const MAX_FILES = 5;
+
+function formatBytes(bytes: number, decimals = 1) {
+    if (!+bytes) return '0 Bytes';
+    const k = 1000;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
 
 export function UploadModal({
     open,
@@ -200,7 +209,7 @@ export function UploadModal({
                         onDragLeave={handleDragLeave}
                         onDragOver={handleDragOver}
                         onDrop={handleDrop}
-                        className={`relative flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-8 transition-colors ${isDragging
+                        className={`relative flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed h-[240px] transition-colors ${isDragging
                             ? "border-primary bg-primary/5"
                             : "border-muted-foreground/25 bg-muted/30 hover:border-muted-foreground/50 hover:bg-muted/50"
                             } ${isProcessing ? "pointer-events-none opacity-50" : ""}`}
@@ -256,18 +265,26 @@ export function UploadModal({
                                 {selectedFiles.map((file) => (
                                     <div
                                         key={file.name}
-                                        className="flex items-center gap-2 rounded-md border bg-muted/30 p-2 pl-4 group"
+                                        className="flex items-center gap-2 rounded-md border p-2 pl-4 group hover:bg-muted/50"
                                     >
-                                        <File className="size-4 shrink-0" />
-                                        <span className="flex-1 truncate text-sm">{file.name}</span>
-                                        <Button
-                                            size="icon-sm"
-                                            variant="ghost"
-                                            onClick={() => handleRemoveFile(file.name)}
-                                            disabled={isProcessing}
-                                        >
-                                            <Trash2 className="size-4" />
-                                        </Button>
+                                        <FileSpreadsheet className="size-4" />
+                                        <div className="flex justify-between gap-4 w-full items-center">
+                                            <div className="flex flex-col">
+                                                <span className="truncate text-sm font-medium">{file.name}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {formatBytes(file.file.size)}
+                                                </span>
+                                            </div>
+                                            <Button
+                                                size="icon-sm"
+                                                variant="ghost"
+                                                onClick={() => handleRemoveFile(file.name)}
+                                                disabled={isProcessing}
+                                                className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive"
+                                            >
+                                                <Trash2 />
+                                            </Button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

@@ -88,8 +88,8 @@ export function UserNav() {
                         </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                        <Link to="/data-sources">
-                            Data Sources
+                        <Link to="/reports">
+                            Reports
                         </Link>
                     </DropdownMenuItem>
                 </RequirePermission>

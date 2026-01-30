@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { secureSaveFile } from "@/lib/secure-export";
 import { type Table } from "@tanstack/react-table";
-import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, XCircle, RefreshCw, BadgeCheckIcon, HelpCircle, Hand, Clock1, Clock2, Clock3, Clock4, Clock5, Clock6, Clock7, Clock8, Clock9, Clock10, Clock11, Clock12, Radio, Loader2, AlertTriangle } from "lucide-react";
+import { Search, X, ChevronDown, User, CalendarCheck, Download, Save, Trash2, XCircle, RefreshCw, BadgeCheckIcon, HelpCircle, Hand, Clock1, Clock2, Clock3, Clock4, Clock5, Clock6, Clock7, Clock8, Clock9, Clock10, Clock11, Clock12, Radio, Loader2, AlertTriangle, CloudUpload } from "lucide-react";
 import { utils, write } from "xlsx";
 import { toast } from "sonner";
 import { writeTextFile, BaseDirectory } from "@tauri-apps/plugin-fs";
@@ -96,6 +96,10 @@ interface DataTableToolbarProps<TData> {
     setShowLiveMode?: (show: boolean) => void;
     isLiveLoading?: boolean;
     activeMeetingsCount?: number;
+    onPublish?: () => void;
+    isPublishing?: boolean;
+    canPublish?: boolean;
+    isRefreshing?: boolean;
 }
 
 export function DataTableToolbar<TData>({
@@ -116,6 +120,10 @@ export function DataTableToolbar<TData>({
     setShowLiveMode,
     isLiveLoading = false,
     activeMeetingsCount = 0,
+    onPublish,
+    isPublishing = false,
+    canPublish = false,
+    isRefreshing = false,
 }: DataTableToolbarProps<TData>) {
     const isFiltered =
         table.getState().columnFilters.length > 0 ||
@@ -322,7 +330,7 @@ export function DataTableToolbar<TData>({
                                     column={table.getColumn("branch")}
                                     title="Branch"
                                     options={branchOptions}
-                                    usePartialMatch={true}
+                                    matchMode="includes"
                                     disabled={isTableEmpty}
                                 />
                             )}
@@ -331,6 +339,7 @@ export function DataTableToolbar<TData>({
                                     column={table.getColumn("start_time")}
                                     title="Time"
                                     options={timeOptions}
+                                    matchMode="startsWith"
                                     disabled={isTableEmpty}
                                 />
                             )}
@@ -346,7 +355,7 @@ export function DataTableToolbar<TData>({
                                 >
                                     <AlertTriangle />
                                     Overlaps
-                                    {/* {showOverlapsOnly && ` (${overlapCount})`} */}
+                                    {showOverlapsOnly && ` (${overlapCount})`}
                                 </Button>
                             )}
                         </>
@@ -397,7 +406,7 @@ export function DataTableToolbar<TData>({
                             onClick={onRefresh}
                             disabled={disableRefresh}
                         >
-                            <RefreshCw />
+                            <RefreshCw className={cn(isRefreshing && "animate-spin")} />
                         </Button>
                     )}
                     {!hideActions && (
@@ -417,7 +426,14 @@ export function DataTableToolbar<TData>({
                                     <CalendarCheck />
                                     Copy Schedule
                                 </DropdownMenuItem>
-
+                                {/* <RequirePermission permission="schedules.manage"> */}
+                                <RequirePermission>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={onPublish} disabled={!canPublish || isPublishing}>
+                                        {isPublishing ? <Loader2 className="animate-spin" /> : <CloudUpload />}
+                                        {isPublishing ? "Publishing..." : "Publish Schedule"}
+                                    </DropdownMenuItem>
+                                </RequirePermission>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={onSaveSchedule}>
                                     <Save />
@@ -466,6 +482,6 @@ export function DataTableToolbar<TData>({
                     </AlertDialog>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

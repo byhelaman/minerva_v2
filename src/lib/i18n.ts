@@ -7,24 +7,24 @@ import es from '../locales/es.json';
 import fr from '../locales/fr.json';
 
 i18n
-    // detect user language
-    // learn more: https://github.com/i18next/i18next-browser-languageDetector
+    // detectar idioma del usuario
+    // saber más: https://github.com/i18next/i18next-browser-languageDetector
     .use(LanguageDetector)
-    // pass the i18n instance to react-i18next.
+    // pasar la instancia i18n a react-i18next.
     .use(initReactI18next)
-    // init i18next
-    // for all options read: https://www.i18next.com/overview/configuration-options
+    // inicializar i18next
+    // para todas las opciones leer: https://www.i18next.com/overview/configuration-options
     .init({
         debug: true,
         fallbackLng: 'en',
         detection: {
-            // Only use localStorage, ignoring navigator (system language)
+            // Solo usar localStorage, ignorando navigator (idioma del sistema)
             order: ['localStorage'],
-            // Cache user language in localStorage
+            // Guardar idioma del usuario en localStorage
             caches: ['localStorage'],
         },
         interpolation: {
-            escapeValue: false, // not needed for react as it escapes by default
+            escapeValue: false, // no es necesario para react ya que escapa por defecto
         },
         resources: {
             en: {

@@ -9,17 +9,17 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { ZoomIntegration } from "@/features/system/components/ZoomIntegration";
 import { MicrosoftIntegration } from "@/features/system/components/MicrosoftIntegration";
+import { Label } from "@/components/ui/label";
 
 
 export function SystemPage() {
-    // const { t } = useTranslation(); // 't' no se usa por ahora en este componente (hardcoded English UI)
     const { isAdmin } = useAuth();
     const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
     const [isManageRolesOpen, setIsManageRolesOpen] = useState(false);
     const [userCount, setUserCount] = useState<number | null>(null);
     const [isLoadingCount, setIsLoadingCount] = useState(false);
 
-    // Fetch user count on mount (only for admins)
+    // Obtener conteo de usuarios al montar (solo para admins)
     useEffect(() => {
         if (isAdmin()) {
             fetchUserCount();
@@ -40,7 +40,7 @@ export function SystemPage() {
         }
     };
 
-    // Refresh count when modal closes
+    // Refrescar conteo cuando el modal cierra
     const handleUsersModalChange = (open: boolean) => {
         setIsManageUsersOpen(open);
         if (!open && isAdmin()) {
@@ -97,8 +97,8 @@ export function SystemPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <p className="font-medium text-sm">Role Management</p>
+                                <div className="space-y-2">
+                                    <Label>Role Management</Label>
                                     <p className="text-xs text-muted-foreground">
                                         View and configure roles and their permissions.
                                     </p>

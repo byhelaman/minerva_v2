@@ -113,6 +113,7 @@ interface ZoomWebhookEvent {
     payload: {
         object: any
     }
+    time_stamp?: number  // Timestamp del evento de Zoom (ms)
 }
 
 async function processEvent(supabase: SupabaseClient, event: ZoomWebhookEvent): Promise<void> {
@@ -137,7 +138,7 @@ async function processEvent(supabase: SupabaseClient, event: ZoomWebhookEvent): 
             // ========== EVENTOS DE REUNIÓN ==========
             case 'meeting.created':
             case 'meeting.updated':
-                await upsertMeeting(supabase, payload.object)
+                await upsertMeeting(supabase, payload.object, event.time_stamp)
                 break
 
             case 'meeting.deleted':
@@ -253,6 +254,7 @@ interface ZoomMeetingData {
     timezone?: string
     join_url?: string
     synced_at: string
+    last_event_timestamp?: number
 }
 
 interface ZoomMeetingPayload {
@@ -267,10 +269,34 @@ interface ZoomMeetingPayload {
     join_url?: string
 }
 
-async function upsertMeeting(supabase: SupabaseClient, meeting: ZoomMeetingPayload): Promise<void> {
+async function upsertMeeting(supabase: SupabaseClient, meeting: ZoomMeetingPayload, eventTimestamp?: number): Promise<void> {
+    const meetingId = String(meeting.id)
+
+    // Validar si el evento es obsoleto comparando con last_event_timestamp existente
+    if (eventTimestamp) {
+        const { data: existing } = await supabase
+            .from('zoom_meetings')
+            .select('last_event_timestamp')
+            .eq('meeting_id', meetingId)
+            .single()
+
+        if (existing?.last_event_timestamp) {
+            // Si el nuevo evento es ANTERIOR o IGUAL al último procesado, ignorar
+            if (eventTimestamp <= existing.last_event_timestamp) {
+                console.log(`Webhook: Ignoring stale event for meeting ${meetingId} (event_ts: ${eventTimestamp}, last_ts: ${existing.last_event_timestamp})`)
+                return  // Ignorar webhook obsoleto
+            }
+        }
+    }
+
     const meetingRecord: ZoomMeetingData = {
-        meeting_id: String(meeting.id),
+        meeting_id: meetingId,
         synced_at: new Date().toISOString()
+    }
+
+    // Guardar el timestamp del evento si existe
+    if (eventTimestamp) {
+        meetingRecord.last_event_timestamp = eventTimestamp
     }
 
     // Solo agregar campos si tienen valores (evitar sobreescribir con null)

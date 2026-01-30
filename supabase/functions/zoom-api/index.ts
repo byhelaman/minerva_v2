@@ -161,7 +161,8 @@ serve(async (req: Request) => {
                     timezone: zoomData.timezone,
                     join_url: zoomData.join_url,
                     created_at: zoomData.created_at,
-                    synced_at: new Date().toISOString()
+                    synced_at: new Date().toISOString(),
+                    last_event_timestamp: Date.now() // Actualizar timestamp para invalidar webhooks anteriores
                 }
 
                 // 3. Upsert a Supabase

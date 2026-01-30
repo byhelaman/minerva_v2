@@ -21,8 +21,8 @@ export async function secureSaveFile({
     openAfterExport = true
 }: SaveFileOptions): Promise<boolean> {
     try {
-        // Convert to Array.from if it's strictly typed as Uint8Array, as Tauri invokes expects serialization
-        // number[] is safe for Vec<u8>
+        // Convertir a Array.from si es estrictamente Uint8Array, ya que Tauri espera serialización
+        // number[] es seguro para Vec<u8>
         const body = content instanceof Uint8Array ? Array.from(content) : content;
 
         const saved = await invoke<boolean>("save_file", {

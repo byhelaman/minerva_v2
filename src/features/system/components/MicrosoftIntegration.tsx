@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Unplug, Link2, FileSpreadsheet, X, FolderOpen, Check, Folder, RefreshCw } from "lucide-react";
+import { Loader2, Unplug, Link2, FileSpreadsheet, FolderOpen, Folder, RefreshCw, X } from "lucide-react";
+import { BaseDirectory, remove, exists } from "@tauri-apps/plugin-fs";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -23,7 +24,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog";
 import {
     Breadcrumb,
@@ -35,14 +35,19 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { DialogClose } from "@radix-ui/react-dialog";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+
+const CACHE_FILE_NAME = "linked_source_cache.json";
 
 interface MicrosoftAccount {
     email: string;
     name: string;
     connected_at: string;
-    linked_file_id?: string;
-    linked_file_name?: string;
+    schedules_folder?: { id: string; name: string };
+    incidences_file?: { id: string; name: string };
 }
 
 interface FileSystemItem {
@@ -54,75 +59,18 @@ interface FileSystemItem {
 }
 
 interface MicrosoftIntegrationProps {
-    onFileSelect?: (file: { id: string; name: string } | null) => void;
-    currentFile?: { id: string; name: string } | null;
+    onConfigChange?: () => void;
 }
 
-export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftIntegrationProps) {
+export function MicrosoftIntegration({ onConfigChange }: MicrosoftIntegrationProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [account, setAccount] = useState<MicrosoftAccount | null>(null);
     const [isConnecting, setIsConnecting] = useState(false);
     const [isDisconnecting, setIsDisconnecting] = useState(false);
-    const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
+
+    // Configuration Mode: 'schedules_folder' or 'incidences_file'
+    const [configMode, setConfigMode] = useState<'schedules_folder' | 'incidences_file' | null>(null);
     const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
-
-    // Sync external file state if provided
-    useEffect(() => {
-        if (currentFile !== undefined) {
-            setSelectedFile(currentFile);
-        }
-    }, [currentFile]);
-
-    // ... (rest of state)
-
-    // ... (fetchFiles, effects, auth handlers remain mostly same)
-
-    const handleDisconnect = async () => {
-        try {
-            setIsDisconnecting(true);
-            const { error } = await supabase.functions.invoke('microsoft-auth', {
-                body: { action: 'disconnect' },
-                method: 'POST'
-            });
-
-            if (error) throw error;
-
-            setAccount(null);
-            setSelectedFile(null);
-            if (onFileSelect) onFileSelect(null);
-            setCurrentFolderId(null);
-            setBreadcrumbs([{ id: null, name: "Home" }]);
-            toast.success("Microsoft disconnected");
-        } catch (error) {
-            toast.error("Failed to disconnect");
-        } finally {
-            setIsDisconnecting(false);
-        }
-    };
-
-    const handleSelectFile = async (file: { id: string; name: string }) => {
-        try {
-            // Persist to backend
-            const { error } = await supabase.functions.invoke('microsoft-auth', {
-                body: {
-                    action: 'link-file',
-                    fileId: file.id,
-                    fileName: file.name
-                },
-                method: 'POST'
-            });
-
-            if (error) throw error;
-
-            setSelectedFile(file);
-            if (onFileSelect) onFileSelect(file);
-            setIsFileDialogOpen(false);
-            toast.success(`Linked file: ${file.name}`);
-        } catch (error) {
-            console.error("Failed to link file", error);
-            toast.error("Failed to save file selection");
-        }
-    };
 
     // Restoring File Navigation State and Logic
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -165,7 +113,6 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
             // Race Condition Check
             const currentActiveFolder = currentFolderRef.current || 'root';
             if (targetFolder !== currentActiveFolder) {
-                console.log("Ignoring stale response for", targetFolder);
                 return;
             }
 
@@ -192,7 +139,13 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
     };
 
     useEffect(() => {
-        fetchFiles();
+        if (isFileDialogOpen) {
+            fetchFiles();
+        } else {
+            // Reset nav when closed
+            setCurrentFolderId(null);
+            setBreadcrumbs([{ id: null, name: "Home" }]);
+        }
     }, [currentFolderId, isFileDialogOpen, account]);
 
     const handleRefresh = () => {
@@ -200,30 +153,25 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
     };
 
     // Initial Status Check
-    useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                // setIsLoading(true); // Don't block UI entirely
-                const { data, error } = await supabase.functions.invoke('microsoft-auth', {
-                    body: { action: 'status' },
-                    method: 'POST'
-                });
+    const fetchStatus = async () => {
+        try {
+            const { data, error } = await supabase.functions.invoke('microsoft-auth', {
+                body: { action: 'status' },
+                method: 'POST'
+            });
 
-                if (!error && data?.connected && data?.account) {
-                    setAccount(data.account);
-                    // Load linked file if exists
-                    if (data.account.file_id && data.account.file_name) {
-                        const file = { id: data.account.file_id, name: data.account.file_name };
-                        setSelectedFile(file);
-                        if (onFileSelect) onFileSelect(file);
-                    }
-                }
-            } catch (error) {
-                console.error("Status check failed", error);
-            } finally {
-                setIsLoading(false);
+            if (!error && data?.connected && data?.account) {
+                setAccount(data.account);
+                if (onConfigChange) onConfigChange();
             }
-        };
+        } catch (error) {
+            console.error("Status check failed", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchStatus();
     }, []);
 
@@ -233,6 +181,77 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
             if (timerRef.current) clearInterval(timerRef.current);
         };
     }, []);
+
+    const handleDisconnect = async () => {
+        try {
+            setIsDisconnecting(true);
+            const { error } = await supabase.functions.invoke('microsoft-auth', {
+                body: { action: 'disconnect' },
+                method: 'POST'
+            });
+
+            if (error) throw error;
+
+            setAccount(null);
+            setCurrentFolderId(null);
+            setBreadcrumbs([{ id: null, name: "Home" }]);
+
+            // Clear Cache
+            try {
+                if (await exists(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData })) {
+                    await remove(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData });
+                }
+            } catch (ignore) { console.error("Failed to clear cache", ignore); }
+
+            if (onConfigChange) onConfigChange();
+            toast.success("Microsoft disconnected");
+        } catch (error) {
+            toast.error("Failed to disconnect");
+        } finally {
+            setIsDisconnecting(false);
+        }
+    };
+
+    const handleSelectLink = async (item: { id: string; name: string }) => {
+        if (!configMode) return;
+
+        try {
+            // Persist to backend
+            const { error } = await supabase.functions.invoke('microsoft-auth', {
+                body: {
+                    action: 'update-config',
+                    type: configMode,
+                    id: item.id,
+                    name: item.name
+                },
+                method: 'POST'
+            });
+
+            if (error) throw error;
+
+            // Update local state
+            setAccount(prev => prev ? ({
+                ...prev,
+                [configMode]: { id: item.id, name: item.name }
+            }) : null);
+
+            setIsFileDialogOpen(false);
+            setConfigMode(null);
+
+            // Clear Cache on Config Change to prevent showing stale data from previous file
+            try {
+                if (await exists(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData })) {
+                    await remove(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData });
+                }
+            } catch (ignore) { console.error("Failed to clear cache", ignore); }
+
+            toast.success(`Linked ${configMode === 'schedules_folder' ? 'Folder' : 'File'}: ${item.name}`);
+            if (onConfigChange) onConfigChange();
+        } catch (error) {
+            console.error("Failed to link", error);
+            toast.error("Failed to save selection");
+        }
+    };
 
     const handleConnect = async () => {
         try {
@@ -245,11 +264,9 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
             if (error) throw error;
             if (!data?.url) throw new Error("No URL returned");
 
-            // Open Auth URL
             await openUrl(data.url);
             toast.info("Please complete sign in your browser...");
 
-            // Start Polling
             const startTime = Date.now();
             const POLL_INTERVAL = 3000;
             const TIMEOUT = 180000; // 3 min
@@ -299,6 +316,61 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
         toast.info("Connection cancelled");
     };
 
+    // Helper to open dialog for specific mode
+    const openSelectionDialog = (mode: 'schedules_folder' | 'incidences_file') => {
+        setConfigMode(mode);
+        setIsFileDialogOpen(true);
+    };
+
+    // Render Helpers
+    const renderConnectionStatus = () => (
+        <div className="space-y-1">
+            {account ? (
+                <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-green-500" />
+                    <span className="font-medium text-sm">
+                        Connected
+                    </span>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-gray-300" />
+                    <span className="font-medium text-sm">
+                        Not Connected
+                    </span>
+                </div>
+            )}
+
+            <p className="text-sm text-muted-foreground">
+                {account ? `Linked to ${account.email} ` : "No account linked"}
+            </p>
+        </div>
+    );
+
+    const renderConfigRow = (
+        title: string,
+        description: string,
+        value: { id: string; name: string } | undefined,
+        mode: 'schedules_folder' | 'incidences_file',
+    ) => (
+        <div className="flex items-center justify-between space-x-2">
+            <div className={value?.id ? "space-y-1" : "space-y-2"}>
+                <div className="flex items-center gap-2">
+                    <Label>{title} {value?.name && <Badge variant="secondary">{value.name}</Badge>}</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">{description}</p>
+            </div>
+            <Button
+                variant="outline"
+                size="sm"
+                disabled={!account}
+                onClick={() => openSelectionDialog(mode)}
+            >
+                {value?.id ? "Change" : "Browse"}
+            </Button>
+        </div>
+    );
+
     if (isLoading) {
         return (
             <Card className="shadow-none">
@@ -320,223 +392,229 @@ export function MicrosoftIntegration({ onFileSelect, currentFile }: MicrosoftInt
             <CardHeader>
                 <CardTitle>Microsoft Integration</CardTitle>
                 <CardDescription>
-                    Connect your Microsoft account and link an Excel file.
+                    Manage connection to OneDrive for Schedules and Incidences.
                 </CardDescription>
             </CardHeader>
-            <CardContent>
-                <div className="flex items-center justify-between gap-6 flex-wrap">
-                    <div className="space-y-1">
-                        {account ? (
-                            <div className="flex flex-col gap-2">
-                                <div className="flex items-center gap-2">
-                                    <div className="size-2 rounded-full bg-green-500" />
-                                    <span className="font-medium text-sm">
-                                        Connected
-                                    </span>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <div className="size-2 rounded-full bg-gray-300" />
-                                <span className="font-medium text-sm">
-                                    Not Connected
-                                </span>
-                            </div>
-                        )}
-
-                        <p className="text-sm text-muted-foreground">
-                            {account ? `Linked to ${account.email} ` : "No account linked"}
-                        </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        {account && (
-                            <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
-                                <DialogTrigger asChild>
-                                    <Button variant="outline" size="sm">
-                                        <FolderOpen />
-                                        {selectedFile ? "Change File" : "Browse"}
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-[500px]">
-                                    <DialogHeader>
-                                        <DialogTitle>Select from OneDrive</DialogTitle>
-                                        <DialogDescription>
-                                            Navigate your folders to find the Excel file.
-                                        </DialogDescription>
-                                    </DialogHeader>
-
-                                    {/* Breadcrumbs */}
-                                    <div className="my-1 px-1 flex items-center justify-between">
-                                        <Breadcrumb>
-                                            <BreadcrumbList>
-                                                {breadcrumbs.map((crumb, index) => {
-                                                    const isLast = index === breadcrumbs.length - 1;
-                                                    return (
-                                                        <span key={crumb.id || 'root'} className="flex items-center gap-1.5">
-                                                            <BreadcrumbItem>
-                                                                {isLast ? (
-                                                                    <BreadcrumbPage>{crumb.name}</BreadcrumbPage>
-                                                                ) : (
-                                                                    <BreadcrumbLink
-                                                                        className="cursor-pointer flex items-center gap-1"
-                                                                        onClick={() => handleBreadcrumbClick(index)}
-                                                                    >
-                                                                        {crumb.name}
-                                                                    </BreadcrumbLink>
-                                                                )}
-                                                            </BreadcrumbItem>
-                                                            {!isLast && <BreadcrumbSeparator />}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </BreadcrumbList>
-                                        </Breadcrumb>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            onClick={handleRefresh}
-                                            disabled={isLoadingFiles}
-                                            title="Refresh folder"
-                                        >
-                                            <RefreshCw />
-                                        </Button>
-                                    </div>
-
-                                    <ScrollArea className="h-[300px] border rounded-md">
-                                        <div className="p-2 h-full">
-                                            {isLoadingFiles ? (
-                                                <div className="flex flex-col items-center justify-center h-full min-h-[280px] space-y-2">
-                                                    <Loader2 className="h-6 w-6 animate-spin" />
-                                                    <p className="text-sm">Loading files...</p>
-                                                </div>
-                                            ) : files.length === 0 ? (
-                                                <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground">
-                                                    <FolderOpen className="mb-2 opacity-20" size={24} />
-                                                    <p className="text-sm">Empty folder</p>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-1">
-                                                    {files.map((item) => {
-                                                        const isFolder = item.type === 'folder';
-                                                        const isExcel = item.name.toLowerCase().endsWith('.xlsx');
-                                                        const isDisabled = !isFolder && !isExcel;
-
-                                                        return (
-                                                            <div
-                                                                key={item.id}
-                                                                className={cn(
-                                                                    "group flex items-center justify-between p-2 rounded-md transition-all",
-                                                                    isDisabled ? "opacity-50 cursor-not-allowed" : "hover:bg-accent/50 cursor-pointer"
-                                                                )}
-                                                                onClick={() => {
-                                                                    if (isDisabled) return;
-                                                                    isFolder ? handleNavigate(item.id, item.name) : handleSelectFile({ id: item.id, name: item.name });
-                                                                }}
-                                                            >
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className={cn(
-                                                                        "transition-colors",
-                                                                        isDisabled ? "text-muted-foreground" : "text-muted-foreground group-hover:text-foreground"
-                                                                    )}>
-                                                                        {isFolder ? <Folder className="h-4 w-4" /> : <FileSpreadsheet className={cn("h-4 w-4", selectedFile?.id === item.id ? "text-primary" : "")} />}
-                                                                    </div>
-                                                                    <span className={cn(
-                                                                        "text-sm leading-none transition-colors",
-                                                                        !isDisabled && "group-hover:text-primary",
-                                                                        selectedFile?.id === item.id ? "font-medium" : ""
-                                                                    )}>
-                                                                        {item.name}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-xs text-muted-foreground">
-                                                                        {item.date}
-                                                                    </span>
-                                                                    {selectedFile?.id === item.id && !isDisabled && (
-                                                                        <Check className="h-4 w-4 text-primary" />
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </ScrollArea>
-                                    <DialogFooter>
-                                        <DialogClose asChild>
-                                            <Button variant="secondary">Cancel</Button>
-                                        </DialogClose>
-                                    </DialogFooter>
-                                </DialogContent>
-
-                            </Dialog>
-                        )}
-
-                        {account ? (
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={isDisconnecting}
-                                        className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive"
-                                    >
-                                        {isDisconnecting ? <Loader2 className="animate-spin" /> : <Unplug />}
-                                        {isDisconnecting ? "Waiting..." : "Disconnect"}
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This will disconnect your Microsoft account.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel disabled={isDisconnecting}>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleDisconnect} disabled={isDisconnecting}>
-                                            {isDisconnecting ? (
-                                                <>
-                                                    <Loader2 className="animate-spin" />
-                                                    Disconnecting...
-                                                </>
-                                            ) : (
-                                                "Disconnect"
-                                            )}
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        ) : (
-                            isConnecting ? (
-                                <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" disabled className="gap-2">
-                                        <Loader2 className="animate-spin" />
-                                        Connecting...
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon-sm"
-                                        onClick={handleCancelConnect}
-                                        className="text-muted-foreground hover:text-foreground"
-                                        title="Cancel connection"
-                                    >
-                                        <X />
-                                        <span className="sr-only">Cancel</span>
-                                    </Button>
-                                </div>
-                            ) : (
-                                <Button variant="outline" size="sm" onClick={handleConnect}>
-                                    <Link2 />
-                                    Connect Microsoft
+            <CardContent className="space-y-6">
+                {/* Header Status */}
+                <div className="flex items-center justify-between">
+                    {renderConnectionStatus()}
+                    {account ? (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={isDisconnecting}
+                                    className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive"
+                                >
+                                    <Unplug />
+                                    Disconnect
                                 </Button>
-                            )
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will stop synchronization. Your files will remain in OneDrive.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDisconnect}>Disconnect</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    ) : (
+                        isConnecting ? (
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" disabled className="gap-2">
+                                    <Loader2 className="animate-spin" />
+                                    Connecting...
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={handleCancelConnect}
+                                    className="text-muted-foreground hover:text-foreground"
+                                    title="Cancel connection"
+                                >
+                                    <X />
+                                    <span className="sr-only">Cancel</span>
+                                </Button>
+                            </div>
+                        ) : (
+                            <Button variant="outline" size="sm" onClick={handleConnect}>
+                                <Link2 />
+                                Connect Microsoft
+                            </Button>
+                        )
+                    )}
+                </div>
+                {account && <Separator />}
+                {/* Configuration Sections */}
+                {account && (
+                    <div className="space-y-6">
+                        {renderConfigRow(
+                            "Monthly Schedules Folder",
+                            "Folder where monthly Excel files are stored/created.",
+                            account.schedules_folder,
+                            'schedules_folder',
+                        )}
+                        {renderConfigRow(
+                            "Incidences Log File",
+                            "Single Excel file for tracking all history.",
+                            account.incidences_file,
+                            'incidences_file',
                         )}
                     </div>
-                </div>
+                )}
+
+                {/* File Browser Dialog */}
+                <Dialog open={isFileDialogOpen} onOpenChange={(open) => { setIsFileDialogOpen(open); if (!open) setConfigMode(null); }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>
+                                Select {configMode === 'schedules_folder' ? 'Folder' : 'File'}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {configMode === 'schedules_folder'
+                                    ? "Select the root folder for schedules."
+                                    : "Select the Excel file for incidences."}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        {/* Breadcrumbs */}
+                        <div className="flex items-center justify-between px-1 my-1">
+                            <Breadcrumb>
+                                <BreadcrumbList>
+                                    {breadcrumbs.map((crumb, index) => {
+                                        const isLast = index === breadcrumbs.length - 1;
+                                        return (
+                                            <div key={crumb.id || 'root'} className="contents">
+                                                <BreadcrumbItem>
+                                                    {isLast ? (
+                                                        <BreadcrumbPage>{crumb.name}</BreadcrumbPage>
+                                                    ) : (
+                                                        <BreadcrumbLink
+                                                            className="cursor-pointer"
+                                                            onClick={() => handleBreadcrumbClick(index)}
+                                                        >
+                                                            {crumb.name}
+                                                        </BreadcrumbLink>
+                                                    )}
+                                                </BreadcrumbItem>
+                                                {!isLast && <BreadcrumbSeparator />}
+                                            </div>
+                                        );
+                                    })}
+                                </BreadcrumbList>
+                            </Breadcrumb>
+                            <Button variant="secondary" size="icon-sm" onClick={handleRefresh} disabled={isLoadingFiles}>
+                                <RefreshCw className={isLoadingFiles ? "animate-spin" : ""} />
+                            </Button>
+                        </div>
+
+                        {/* Browser */}
+                        <ScrollArea className="h-[300px] border rounded-md">
+                            <div className="p-2 space-y-1">
+                                {isLoadingFiles ? (
+                                    <div className="flex justify-center p-8 text-muted-foreground">
+                                        <Loader2 className="animate-spin h-6 w-6" />
+                                    </div>
+                                ) : files.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-8 text-muted-foreground gap-1">
+                                        <FolderOpen className="h-6 w-6 opacity-50" />
+                                        <p className="text-sm">Empty folder</p>
+                                    </div>
+                                ) : (
+                                    files.map((item) => {
+                                        const isFolder = item.type === 'folder';
+                                        const isExcel = item.name.toLowerCase().endsWith('.xlsx');
+
+                                        // Logic for disabling the ROW (interactions)
+                                        // If mode is 'incidences_file', only folders and xlsx are active (folders to nav).
+                                        // If mode is 'schedules_folder', only folders are active.
+                                        const isRowDisabled = configMode === 'incidences_file'
+                                            ? (!isFolder && !isExcel)
+                                            : (!isFolder);
+
+                                        // Logic for disabling the CHECKBOX (selection)
+                                        // 1. If row is disabled, checkbox is disabled.
+                                        // 2. If mode is incidences_file, folders cannot be selected (only nav).
+                                        // 3. If mode is schedules_folder, only folders can be selected.
+                                        const isCheckboxDisabled = isRowDisabled ||
+                                            (configMode === 'incidences_file' && isFolder);
+
+                                        // Is this item the currently selected one?
+                                        const isSelected =
+                                            (configMode === 'schedules_folder' && account?.schedules_folder?.id === item.id) ||
+                                            (configMode === 'incidences_file' && account?.incidences_file?.id === item.id);
+
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                className={cn(
+                                                    "flex items-center gap-6 justify-between p-2 rounded-md transition-colors group",
+                                                    isRowDisabled ? "opacity-40" : "hover:bg-accent/50 cursor-pointer",
+                                                    isSelected && "bg-accent/50 border border-primary/20"
+                                                )}
+                                                onClick={() => {
+                                                    if (isRowDisabled) return;
+                                                    // Navigate if folder (always navigation via main click)
+                                                    if (isFolder) handleNavigate(item.id, item.name);
+                                                    // Add separate Select button for folder selection mode
+                                                    // For files, click selects immediately? Or confirm? 
+                                                    // Previous logic was immediate.
+                                                    if (!isFolder && configMode === 'incidences_file') handleSelectLink(item);
+                                                }}
+                                            >
+
+
+                                                <div className="flex items-center gap-3 px-1">
+                                                    {isFolder ? <Folder className="h-4 w-4" /> : <FileSpreadsheet className="h-4 w-4" />}
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-medium">{item.name}</span>
+                                                        <span className="text-xs text-muted-foreground">{item.date}</span>
+                                                    </div>
+                                                </div>
+                                                {/* Actions */}
+                                                <div className="flex items-center gap-2 px-1">
+                                                    {!isCheckboxDisabled && (
+                                                        <Checkbox
+                                                            checked={isSelected}
+                                                            onCheckedChange={(checked) => {
+                                                                if (checked) {
+                                                                    handleSelectLink(item);
+                                                                }
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className={cn(
+                                                                // Enabled items: invisible unless hovered or selected
+                                                                !isSelected && "opacity-0 group-hover:opacity-100"
+                                                            )}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </ScrollArea>
+
+                        <DialogFooter className="flex justify-between sm:justify-between w-full">
+                            <div className="text-xs text-muted-foreground self-center">
+                                {configMode === 'schedules_folder'
+                                    ? "Navigate to folder and click Select."
+                                    : "Click on an Excel file to select it."}
+                            </div>
+                            <Button variant="outline" onClick={() => setIsFileDialogOpen(false)}>Cancel</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );
 }
+

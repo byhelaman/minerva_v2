@@ -7,7 +7,7 @@ import { SettingsPage } from "@/features/settings/components/SettingsPage";
 import { ProfilePage } from "@/features/profile/components/ProfilePage";
 import { DocsPage } from "@/features/docs/components/DocsPage";
 import { SystemPage } from "@/features/system/components/SystemPage";
-import { DataSourcesPage } from "@/features/system/components/DataSourcesPage";
+import { ReportsPage } from "@/features/system/components/ReportsPage";
 import { LoginPage } from "@/features/auth/components/LoginPage";
 
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
@@ -46,12 +46,13 @@ function Layout() {
 }
 
 
-
+import { BackgroundSyncer } from "@/features/system/components/BackgroundSyncer";
 import { UpdateDialog } from "@/components/update-dialog";
 
 function App() {
   return (
     <>
+      <BackgroundSyncer />
       <UpdateDialog />
       <Routes>
         {/* Ruta pública - Login (signup se hace desde el dialog) */}
@@ -76,8 +77,8 @@ function App() {
             </AdminRoute>
           } />
 
-          <Route path="/data-sources" element={
-            <DataSourcesPage />
+          <Route path="/reports" element={
+            <ReportsPage />
           } />
         </Route>
       </Routes>

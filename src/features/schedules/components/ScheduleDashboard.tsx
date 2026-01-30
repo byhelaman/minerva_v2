@@ -9,13 +9,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/components/settings-provider";
 import { RequirePermission } from "@/components/RequirePermission";
-import { AUTOSAVE_FILENAME, AUTOSAVE_DEBOUNCE_MS } from "@/lib/constants";
+import { AUTOSAVE_FILENAME, AUTOSAVE_DEBOUNCE_MS, INCIDENCES_FILENAME } from "@/lib/constants";
 import { Bot, CalendarPlus, CalendarSearch } from "lucide-react";
 import { SearchLinkModal } from "./modals/SearchLinkModal";
 import { CreateLinkModal } from "./modals/CreateLinkModal";
 import { AssignLinkModal } from "./modals/AssignLinkModal";
 import { useZoomStore } from "@/features/matching/stores/useZoomStore";
 import { MatchingService } from "@/features/matching/services/matcher";
+import { useScheduleStore } from "@/features/schedules/stores/useScheduleStore";
 
 export function ScheduleDashboard() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -23,9 +24,28 @@ export function ScheduleDashboard() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
-    const [schedules, setSchedules] = useState<Schedule[]>([]);
+    // Global Store
+    const {
+        baseSchedules,
+        setBaseSchedules,
+        incidences,
+        setIncidences,
+        activeDate,
+        setActiveDate,
+        getComputedSchedules,
+        refreshMsConfig,
+        publishDailyChanges,
+        isPublishing,
+        msConfig
+    } = useScheduleStore();
+
+    // Computed Schedules (Merged with Incidences)
+    // Memoize to prevent infinite loops in downstream components (AssignLinkModal) that depend on this array
+    const schedules = useMemo(() => getComputedSchedules(), [baseSchedules, incidences]);
+
     const hasLoadedAutosave = useRef(false);
     const autoSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const incidencesSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { settings } = useSettings();
     const { fetchZoomData, isInitialized, meetings, users, fetchActiveMeetings, isLoadingData } = useZoomStore();
 
@@ -35,6 +55,11 @@ export function ScheduleDashboard() {
     const [activePrograms, setActivePrograms] = useState<Set<string>>(new Set());
     const [liveTimeFilter, setLiveTimeFilter] = useState<string | undefined>(undefined);
     const [liveDateFilter, setLiveDateFilter] = useState<string | undefined>(undefined);
+
+    // Init Global Store
+    useEffect(() => {
+        refreshMsConfig();
+    }, []);
 
     // Pre-load Zoom data in background on mount
     useEffect(() => {
@@ -50,13 +75,29 @@ export function ScheduleDashboard() {
 
         const loadAutosave = async () => {
             try {
-                const fileExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
-                if (fileExists) {
+                // Load Base Schedules
+                const schedExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                if (schedExists) {
                     const content = await readTextFile(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
                     const parsedData = JSON.parse(content);
                     if (Array.isArray(parsedData) && parsedData.length > 0) {
-                        setSchedules(parsedData);
-                        toast.success("Previous session restored successfully");
+                        setBaseSchedules(parsedData);
+                        if (parsedData.length > 0 && parsedData[0].date) {
+                            setActiveDate(parsedData[0].date);
+                        }
+                        toast.success("Schedule restored");
+                    }
+                }
+
+                // Load Incidences
+                const incExists = await exists(INCIDENCES_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                if (incExists) {
+                    const content = await readTextFile(INCIDENCES_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                    const parsedData = JSON.parse(content);
+                    if (Array.isArray(parsedData)) {
+                        setIncidences(parsedData);
+                        // Ensure we don't toast twice if both succeed, maybe consolidate?
+                        // toast.success("Incidences restored"); 
                     }
                 }
             } catch (error) {
@@ -68,27 +109,22 @@ export function ScheduleDashboard() {
         loadAutosave();
     }, []);
 
-    // Debounced auto-save when schedules change (if enabled)
+    // Debounced auto-save for SCHEDULES
     useEffect(() => {
-        // Don't auto-save before initial load completes
         if (!hasLoadedAutosave.current) return;
-        // Only auto-save if setting is enabled
         if (!settings.autoSave) return;
 
-        // Clear previous timeout
         if (autoSaveTimeout.current) {
             clearTimeout(autoSaveTimeout.current);
         }
 
-        // Set new debounced save
         autoSaveTimeout.current = setTimeout(async () => {
             try {
-                if (schedules.length > 0) {
-                    await writeTextFile(AUTOSAVE_FILENAME, JSON.stringify(schedules, null, 2), {
+                if (baseSchedules.length > 0) {
+                    await writeTextFile(AUTOSAVE_FILENAME, JSON.stringify(baseSchedules, null, 2), {
                         baseDir: BaseDirectory.AppLocalData,
                     });
                 } else {
-                    // If empty, remove the file
                     const fileExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
                     if (fileExists) {
                         await remove(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
@@ -99,15 +135,46 @@ export function ScheduleDashboard() {
             }
         }, AUTOSAVE_DEBOUNCE_MS);
 
-        // Cleanup on unmount
         return () => {
             if (autoSaveTimeout.current) {
                 clearTimeout(autoSaveTimeout.current);
             }
         };
-    }, [schedules, settings.autoSave]);
+    }, [baseSchedules, settings.autoSave]);
 
-    // Live Mode: Calcular qué meetings activos coinciden con los schedules
+    // Debounced auto-save for INCIDENCES
+    useEffect(() => {
+        if (!hasLoadedAutosave.current) return;
+        // Autosave for incidences is always ON (critical data), or linked to settings?
+        // Let's respect settings.autoSave for consistency, or maybe force it?
+        // User said "Almacenamiento Temporal debe ser un archivo", hinting it's mandatory.
+        // I will ignore `settings.autoSave` for Incidences or assume it's part of the general logic.
+        // I'll stick to `settings.autoSave` for now to be safe, but maybe `true` is better.
+        // I will use `settings.autoSave` to avoid writing if user explicitly disabled persistence.
+        if (!settings.autoSave) return;
+
+        if (incidencesSaveTimeout.current) {
+            clearTimeout(incidencesSaveTimeout.current);
+        }
+
+        incidencesSaveTimeout.current = setTimeout(async () => {
+            try {
+                await writeTextFile(INCIDENCES_FILENAME, JSON.stringify(incidences, null, 2), {
+                    baseDir: BaseDirectory.AppLocalData,
+                });
+            } catch (error) {
+                console.error("Incidences save failed:", error);
+            }
+        }, 1000); // 1 sec debounce for incidences (more critical/smaller)
+
+        return () => {
+            if (incidencesSaveTimeout.current) {
+                clearTimeout(incidencesSaveTimeout.current);
+            }
+        };
+    }, [incidences, settings.autoSave]);
+
+    // Live Mode Logic (Same as before, using 'schedules' which is now computed)
     const handleLiveModeToggle = useCallback(async (enabled: boolean) => {
         setShowLiveMode(enabled);
 
@@ -118,7 +185,6 @@ export function ScheduleDashboard() {
             return;
         }
 
-        // Calcular la hora actual en formato "HH" y fecha en formato del schedule (DD/MM/YYYY)
         const now = new Date();
         const currentHour = now.getHours().toString().padStart(2, '0');
         const currentDate = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
@@ -127,10 +193,7 @@ export function ScheduleDashboard() {
 
         setIsLiveLoading(true);
         try {
-            // 1. Obtener meetings activos frescos
             await fetchActiveMeetings();
-
-            // 2. Obtener los IDs activos del store
             const currentActiveIds = useZoomStore.getState().activeMeetingIds;
 
             if (currentActiveIds.length === 0) {
@@ -139,7 +202,6 @@ export function ScheduleDashboard() {
                 return;
             }
 
-            // 3. Crear matcher y filtrar solo meetings activos
             const activeMeetings = meetings.filter(m => currentActiveIds.includes(m.meeting_id));
 
             if (activeMeetings.length === 0) {
@@ -148,14 +210,12 @@ export function ScheduleDashboard() {
                 return;
             }
 
-            // 4. Filtrar schedules por fecha y hora actual (consistente con la vista de tabla)
             const filteredSchedules = schedules.filter(s => {
                 const matchesDate = s.date === currentDate;
                 const matchesHour = s.start_time?.substring(0, 2) === currentHour;
                 return matchesDate && matchesHour;
             });
 
-            // 5. Hacer matching entre schedules filtrados y meetings activos
             const matcher = new MatchingService(activeMeetings, users);
             const matchedPrograms = new Set<string>();
 
@@ -176,7 +236,7 @@ export function ScheduleDashboard() {
     }, [meetings, users, schedules, fetchActiveMeetings]);
 
     const handleUploadComplete = (newData: Schedule[]) => {
-        // Paso 1: Deduplicar internamente los datos nuevos (entre archivos subidos)
+        // ... (Logic adapted to setBaseSchedules)
         const internalKeys = new Set<string>();
         const deduplicatedNewData: Schedule[] = [];
         let internalDuplicates = 0;
@@ -191,42 +251,37 @@ export function ScheduleDashboard() {
             }
         }
 
-        // Si clearScheduleOnLoad está activado, reemplazar todo (con datos ya deduplicados)
         if (settings.clearScheduleOnLoad) {
-            setSchedules(deduplicatedNewData);
+            setBaseSchedules(deduplicatedNewData);
             const msg = internalDuplicates > 0
                 ? `Loaded ${deduplicatedNewData.length} schedules (${internalDuplicates} internal duplicates removed)`
                 : `Loaded ${deduplicatedNewData.length} schedules`;
-            console.log(msg);
             toast.success(msg);
+
+            // Assume the first date from uploaded file is the active date we want to work on
+            if (deduplicatedNewData.length > 0 && deduplicatedNewData[0].date) {
+                setActiveDate(deduplicatedNewData[0].date);
+            }
             return;
         }
 
-        // Paso 2: Comportamiento por defecto - merge con deduplicación contra existentes
-        const existingKeys = new Set(schedules.map((s) => getUniqueScheduleKey(s)));
-
-        // Filtrar items que ya existen en el estado actual
+        const existingKeys = new Set(baseSchedules.map((s) => getUniqueScheduleKey(s)));
         const uniqueNewData = deduplicatedNewData.filter(
             (s) => !existingKeys.has(getUniqueScheduleKey(s))
         );
-
-        const totalDuplicates = internalDuplicates + (deduplicatedNewData.length - uniqueNewData.length);
 
         if (uniqueNewData.length === 0) {
             toast.info("No new schedules added (all duplicates)");
             return;
         }
 
-        setSchedules((prev) => [...prev, ...uniqueNewData]);
-        console.log(`Added ${uniqueNewData.length} new schedules, ignored ${totalDuplicates} duplicates`);
+        setBaseSchedules([...baseSchedules, ...uniqueNewData]);
         toast.success(`Added ${uniqueNewData.length} new schedules`);
     };
 
     const handleDeleteSchedule = (scheduleToDelete: Schedule) => {
-        setSchedules((prev) => {
-            const keyToDelete = getUniqueScheduleKey(scheduleToDelete);
-            return prev.filter((s) => getUniqueScheduleKey(s) !== keyToDelete);
-        });
+        const keyToDelete = getUniqueScheduleKey(scheduleToDelete);
+        setBaseSchedules(baseSchedules.filter((s) => getUniqueScheduleKey(s) !== keyToDelete));
         toast.success("Row Deleted", {
             description: scheduleToDelete.program,
         });
@@ -234,41 +289,43 @@ export function ScheduleDashboard() {
 
     const handleClearSchedule = async () => {
         try {
-            setSchedules([]);
-            // Limpiar también los resultados de matching
+            setBaseSchedules([]);
+            setActiveDate(null); // Reset active date
             useZoomStore.setState({ matchResults: [] });
-            // Eliminar autosave si existe
             const fileExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
             if (fileExists) {
                 await remove(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
             }
-            toast.success("Schedule cleared and cache removed");
+            toast.success("Schedule cleared");
         } catch (error) {
             console.error("Error clearing schedule:", error);
             toast.error("Error clearing schedule");
         }
     };
 
-    const columns = useMemo(() => getScheduleColumns(handleDeleteSchedule), []);
+    const columns = useMemo(() => getScheduleColumns(handleDeleteSchedule), [baseSchedules]);
+
+    // Date navigation handler (simple prev/next could be added later, for now just display)
 
     return (
         <>
             <div className="flex py-8 my-4 gap-6 justify-between items-center">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-xl font-bold tracking-tight">Management</h1>
-                    <p className="text-muted-foreground">Manage your schedules</p>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>Active Date: {activeDate || "No Date Selected"}</span>
+                        {/* Incidence Count Badge could go here */}
+                        {incidences.length > 0 && (
+                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs">
+                                {incidences.length} Incidences
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <div className="flex gap-2">
 
-                    {/* <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setIsUploadModalOpen(true)}
-                    >
-                        Upload Files
-                    </Button> */}
 
-                    {/* Search - requires meetings.search permission */}
+
                     <RequirePermission permission="meetings.search">
                         <Button
                             size="sm"
@@ -280,7 +337,6 @@ export function ScheduleDashboard() {
                         </Button>
                     </RequirePermission>
 
-                    {/* Create - requires meetings.create permission */}
                     <RequirePermission permission="meetings.create">
                         <Button
                             size="sm"
@@ -292,7 +348,6 @@ export function ScheduleDashboard() {
                         </Button>
                     </RequirePermission>
 
-                    {/* Assign - requires meetings.assign permission */}
                     <RequirePermission permission="meetings.assign">
                         <Button
                             size="sm"
@@ -318,6 +373,9 @@ export function ScheduleDashboard() {
                 liveTimeFilter={showLiveMode ? liveTimeFilter : undefined}
                 liveDateFilter={showLiveMode ? liveDateFilter : undefined}
                 initialPageSize={100}
+                onPublish={publishDailyChanges}
+                isPublishing={isPublishing}
+                canPublish={msConfig.isConnected && schedules.length > 0}
             />
 
             {/* Upload Modal */}

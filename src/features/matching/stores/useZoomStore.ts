@@ -41,7 +41,7 @@ interface ZoomState {
     triggerSync: () => Promise<void>;
     runMatching: (schedules: Schedule[]) => Promise<void>;
     resolveConflict: (schedule: Schedule, selectedMeeting: ZoomMeetingCandidate) => void;
-    createMeetings: (topics: string[], options?: { dailyOnly?: boolean }) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
+    createMeetings: (items: (string | { topic: string; startTime?: string })[], options?: { dailyOnly?: boolean }) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
     updateMatchings: (updates: { meeting_id: string; topic?: string; schedule_for?: string }[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
     executeAssignments: (schedules?: Schedule[]) => Promise<{ succeeded: number; failed: number; errors: string[] }>;
 
@@ -296,7 +296,7 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
     },
 
     executeAssignments: async (schedules?: Schedule[]) => {
-        // Delegating to the generic batch action
+        // Delegando a la acción por lotes genérica
         return get()._genericBatchAction(schedules);
     },
 
@@ -378,32 +378,48 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
         }
     },
 
-    createMeetings: async (topics: string[], options?: { dailyOnly?: boolean }) => {
+    createMeetings: async (items: (string | { topic: string; startTime?: string })[], options?: { dailyOnly?: boolean }) => {
         set({ isExecuting: true });
         try {
             const dailyOnly = options?.dailyOnly ?? false;
 
-            // Build requests
+            // Normalizar ítems a objetos
+            const meetingConfigs = items.map(item =>
+                typeof item === 'string' ? { topic: item, startTime: undefined } : item
+            );
+
+            // Construir solicitudes
             let requests;
 
             if (dailyOnly) {
-                // Type 2 (Scheduled) - Single meeting for today
+                // Tipo 2 (Programado) - Reunión única para hoy
                 const today = new Date();
-                today.setHours(9, 0, 0, 0);
-                const startTimeStr = today.toISOString().split('.')[0]; // Remove millis
+                const todayDateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
 
-                requests = topics.map(topic => ({
-                    action: 'create' as const,
-                    topic,
-                    type: 2, // Scheduled (single occurrence)
-                    start_time: startTimeStr,
-                    duration: 60,
-                    timezone: 'America/Lima',
-                    settings: {
-                        join_before_host: true,
-                        waiting_room: true
+                requests = meetingConfigs.map(config => {
+                    let startTimeStr;
+
+                    if (config.startTime) {
+                        // Usar hora específica ingresada
+                        startTimeStr = `${todayDateStr}T${config.startTime}:00`;
+                    } else {
+                        // Por defecto 9AM
+                        startTimeStr = `${todayDateStr}T09:00:00`;
                     }
-                }));
+
+                    return {
+                        action: 'create' as const,
+                        topic: config.topic,
+                        type: 2, // Scheduled (single occurrence)
+                        start_time: startTimeStr,
+                        duration: 45, // Requested default
+                        timezone: 'America/Lima',
+                        settings: {
+                            join_before_host: true,
+                            waiting_room: true
+                        }
+                    };
+                });
             } else {
                 // Default payload reference:
                 // Type 8 (Recurring fixed time), Weekly, Lun-Jue, +120 days
@@ -418,9 +434,9 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
                 endDate.setDate(endDate.getDate() + 120);
                 const endDateTime = endDate.toISOString().replace('.000', ''); // Z format roughly
 
-                requests = topics.map(topic => ({
+                requests = meetingConfigs.map(config => ({
                     action: 'create' as const,
-                    topic,
+                    topic: config.topic,
                     type: 8,
                     start_time: startTimeStr,
                     duration: 60,
@@ -440,8 +456,6 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
 
             const result = await processBatchChunks(requests);
 
-
-
             // Refresh data should be handled by caller
             // await get().fetchZoomData({ force: true });
 
@@ -449,7 +463,7 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
             return { succeeded: result.succeeded, failed: result.failed, errors: result.errors };
         } catch (err) {
             set({ isExecuting: false });
-            return { succeeded: 0, failed: topics.length, errors: [err instanceof Error ? err.message : 'Unknown error'] };
+            return { succeeded: 0, failed: items.length, errors: [err instanceof Error ? err.message : 'Unknown error'] };
         }
     },
 

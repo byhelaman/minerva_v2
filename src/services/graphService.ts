@@ -61,16 +61,16 @@ export class GraphService {
     }
 
     async getDriveChildren(driveId?: string, itemId?: string) {
-        let endpoint = "https://graph.microsoft.com/v1.0/me/drive/root/children"; // Default: My Drive Root
+        let endpoint = "https://graph.microsoft.com/v1.0/me/drive/root/children"; // Por defecto: Raíz de Mi Unidad
 
         if (driveId && itemId) {
-            // Specific folder in specific drive (could be shared)
+            // Carpeta específica en unidad específica (podría ser compartida)
             endpoint = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/children`;
         } else if (driveId) {
-            // Root of specific drive
+            // Raíz de unidad específica
             endpoint = `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`;
         } else if (itemId) {
-            // Specific folder in My Drive
+            // Carpeta específica en Mi Unidad
             endpoint = `https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/children`;
         }
 

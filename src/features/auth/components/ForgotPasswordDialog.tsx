@@ -62,7 +62,7 @@ export function ForgotPasswordDialog({
     const isSuccess = useRef(false);
 
 
-    // Countdown timer for resend
+    // Temporizador para reenvío
     useEffect(() => {
         if (resendCountdown > 0) {
             const timer = setInterval(() => {
@@ -97,23 +97,22 @@ export function ForgotPasswordDialog({
         defaultValues: { email: defaultEmail || "" },
     });
 
-    // Reset email form when defaultEmail changes
+    // Resetear formulario de email cuando defaultEmail cambia
     useEffect(() => {
         if (defaultEmail) {
             emailForm.setValue("email", defaultEmail);
         }
     }, [defaultEmail, emailForm]);
 
-    // Cleanup on close
+    // Limpieza al cerrar
     const handleOpenChange = (newOpen: boolean) => {
         if (!newOpen) {
             // Advertir si está en el paso de password (ya verificó OTP pero no cambió contraseña)
             // Y SOLO si no fue un éxito
             if (step === "password" && !isSuccess.current) {
                 toast.dismiss();
-                toast.warning("Your password was not changed. You can change it later in your Profile.", {
-                    duration: 30000,
-                    // position: "top-right",
+                toast.warning("Your password was not changed", {
+                    description: "You can change it later in your Profile.",
                 });
             }
 
@@ -135,9 +134,7 @@ export function ForgotPasswordDialog({
         try {
             const { error } = await sendResetPasswordEmail(data.email);
             if (error) {
-                // Security: don't reveal if email exists, but showing error for dev/UX testing
-                // In prod, usually we say "If account exists..."
-                // For this internal app, showing error is helpful.
+
                 toast.error(error.message);
             } else {
                 setEmail(data.email);

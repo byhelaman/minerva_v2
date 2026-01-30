@@ -38,15 +38,21 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
         accessorKey: "date",
         size: 120,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Date" className="justify-center" />
+            <DataTableColumnHeader column={column} title="date" className="justify-center" />
         ),
-        cell: ({ row }) => <div className="w-[100px] text-center">{row.getValue("date")}</div>,
+        cell: ({ row }) => <div className="w-[100px] text-center">
+            {new Date(row.getValue("date")).toLocaleDateString("es-PE", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+            })}
+        </div>,
     },
     {
         accessorKey: "shift",
         size: 100,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Shift" />
+            <DataTableColumnHeader column={column} title="shift" />
         ),
         cell: ({ row }) => <div className="w-[100px]">{row.getValue("shift")}</div>,
         filterFn: (row, id, value) => {
@@ -57,7 +63,7 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
         accessorKey: "branch",
         size: 140,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Branch" />
+            <DataTableColumnHeader column={column} title="branch" />
         ),
         cell: ({ row }) => <div>{row.getValue("branch")}</div>,
         filterFn: (row, id, filterValues: string[]) => {
@@ -66,10 +72,42 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
         },
     },
     {
+        accessorKey: "start_time",
+        size: 150,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="time" className="justify-center" />
+        ),
+        cell: ({ row }) => (
+            <div className="w-[120px] mx-auto text-center">
+                {row.getValue("start_time")} - {row.original.end_time}
+            </div>
+        ),
+    },
+    {
+        accessorKey: "status",
+        size: 80,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="status" />
+        ),
+        cell: ({ row }) => (
+            <div className="text-center">{row.getValue("status")}</div>
+        )
+    },
+    {
+        accessorKey: "description",
+        size: 500,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="description" />
+        ),
+        cell: ({ row }) => (
+            <div className="truncate max-w-[480px]">{row.getValue("description")}</div>
+        )
+    },
+    {
         accessorKey: "instructor",
         size: 200,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Instructor" />
+            <DataTableColumnHeader column={column} title="instructor" />
         ),
         cell: ({ row }) => (
             <div className="truncate w-[180px]" title={row.getValue("instructor")}>{row.getValue("instructor")}</div>
@@ -79,7 +117,7 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
         accessorKey: "program",
         size: 400,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Program" />
+            <DataTableColumnHeader column={column} title="program" />
         ),
         cell: ({ row }) => (
             <div className="truncate max-w-[380px]" title={row.getValue("program")}>
@@ -91,7 +129,7 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
         accessorKey: "minutes",
         size: 70,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Mins" className="justify-center" />
+            <DataTableColumnHeader column={column} title="mins" className="justify-center" />
         ),
         cell: ({ row }) => <div className="w-[50px] text-center">{row.getValue("minutes")}</div>,
     },
@@ -99,9 +137,65 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
         accessorKey: "units",
         size: 70,
         header: ({ column }) => (
-            <DataTableColumnHeader column={column} title="Units" className="justify-center" />
+            <DataTableColumnHeader column={column} title="units" className="justify-center" />
         ),
         cell: ({ row }) => <div className="w-[50px] text-center">{row.getValue("units")}</div>,
+    },
+    {
+        accessorKey: "end_time",
+        size: 100,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="end time" />
+        ),
+        cell: ({ row }) => <div className="text-center">{row.getValue("end_time")}</div>,
+    },
+    {
+        accessorKey: "code",
+        size: 100,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="code" />
+        ),
+        cell: ({ row }) => <div className="text-center">{row.getValue("code")}</div>,
+    },
+    {
+        accessorKey: "substitute",
+        size: 150,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="substitute" />
+        ),
+        cell: ({ row }) => <div>{row.getValue("substitute")}</div>,
+    },
+    {
+        accessorKey: "type",
+        size: 100,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="type" />
+        ),
+        cell: ({ row }) => <div className="text-center">{row.getValue("type")}</div>,
+    },
+    {
+        accessorKey: "subtype",
+        size: 100,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="subtype" />
+        ),
+        cell: ({ row }) => <div className="text-center">{row.getValue("subtype")}</div>,
+    },
+    {
+        accessorKey: "department",
+        size: 150,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="department" />
+        ),
+        cell: ({ row }) => <div>{row.getValue("department")}</div>,
+    },
+    {
+        accessorKey: "feedback",
+        size: 200,
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="feedback" />
+        ),
+        cell: ({ row }) => <div className="truncate" title={row.getValue("feedback")}>{row.getValue("feedback")}</div>,
     },
     {
         id: "actions",

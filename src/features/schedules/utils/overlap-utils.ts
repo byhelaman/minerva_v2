@@ -54,21 +54,21 @@ export function detectOverlaps(schedules: Schedule[]): OverlapResult {
     const timeConflicts = new Set<string>();
     const duplicateClasses = new Set<string>();
 
-    // Group schedules by date + instructor for time conflict detection
+    // Agrupar horarios por fecha + instructor para detección de conflictos de tiempo
     const byDateInstructor = new Map<string, Schedule[]>();
 
-    // Group by date + start_time + end_time + program for duplicate detection
+    // Agrupar por fecha + start_time + end_time + programa para detección de duplicados
     const byClassKey = new Map<string, Schedule[]>();
 
     schedules.forEach((schedule) => {
-        // Key for time conflict: same date, same instructor
+        // Clave para conflicto de tiempo: misma fecha, mismo instructor
         const dateInstructorKey = `${schedule.date}|${schedule.instructor}`;
         if (!byDateInstructor.has(dateInstructorKey)) {
             byDateInstructor.set(dateInstructorKey, []);
         }
         byDateInstructor.get(dateInstructorKey)!.push(schedule);
 
-        // Key for duplicate class: same date, time, program (different instructor)
+        // Clave para clase duplicada: misma fecha, hora, programa (diferente instructor)
         const classKey = `${schedule.date}|${schedule.start_time}|${schedule.end_time}|${schedule.program}`;
         if (!byClassKey.has(classKey)) {
             byClassKey.set(classKey, []);
@@ -76,11 +76,11 @@ export function detectOverlaps(schedules: Schedule[]): OverlapResult {
         byClassKey.get(classKey)!.push(schedule);
     });
 
-    // Detect time conflicts for same instructor
+    // Detectar conflictos de tiempo para el mismo instructor
     byDateInstructor.forEach((group) => {
         if (group.length < 2) return;
 
-        // Check all pairs for time overlap
+        // Verificar superposición de tiempo en todos los pares
         for (let i = 0; i < group.length; i++) {
             for (let j = i + 1; j < group.length; j++) {
                 const s1 = group[i];
@@ -99,18 +99,18 @@ export function detectOverlaps(schedules: Schedule[]): OverlapResult {
         }
     });
 
-    // Detect duplicate classes (same class, different instructors)
+    // Detectar clases duplicadas (misma clase, diferentes instructores)
     byClassKey.forEach((group) => {
         if (group.length < 2) return;
 
-        // Check if there are different instructors
+        // Verificar si hay instructores diferentes
         const instructors = new Set(group.map((s) => s.instructor));
         if (instructors.size > 1) {
             group.forEach((s) => duplicateClasses.add(getScheduleKey(s)));
         }
     });
 
-    // Compute union
+    // Calcular unión
     const allOverlaps = new Set([...timeConflicts, ...duplicateClasses]);
 
     return {

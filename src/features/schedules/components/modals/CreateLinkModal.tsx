@@ -304,10 +304,20 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
         }));
     };
 
+    // Manejador para cambiar hora de inicio
+    const handleTimeChange = (rowId: string, time: string) => {
+        setValidationResults(prev => prev.map(row => {
+            if (row.id === rowId) {
+                return { ...row, start_time: time };
+            }
+            return row;
+        }));
+    };
+
     // Columnas con manejador memorizado
     const columns = useMemo(() =>
-        getCreateLinkColumns(hostMap, handleSelectCandidate, handleMarkAsNew, handleRevertToAmbiguous, handleRevertToExists),
-        [hostMap]
+        getCreateLinkColumns(hostMap, handleSelectCandidate, handleMarkAsNew, handleRevertToAmbiguous, handleRevertToExists, dailyOnly, handleTimeChange),
+        [hostMap, dailyOnly]
     );
 
     // Líneas analizadas para vista previa
@@ -475,7 +485,10 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                                         // Separar acciones
                                         const toCreate = selectedRows
                                             .filter(r => r.status === 'to_create')
-                                            .map(r => r.inputName);
+                                            .map(r => ({
+                                                topic: r.inputName,
+                                                startTime: r.start_time
+                                            }));
 
                                         const updates = selectedRows
                                             .filter(r => (r.status === 'exists' || r.status === 'manual') && r.meeting_id)

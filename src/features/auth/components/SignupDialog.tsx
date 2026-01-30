@@ -63,7 +63,7 @@ export function SignupDialog({
     const [isLoading, setIsLoading] = useState(false);
     const [resendCountdown, setResendCountdown] = useState(0);
 
-    // Countdown timer for resend
+    // Temporizador para reenvío
     useEffect(() => {
         if (resendCountdown > 0) {
             const timer = setInterval(() => {
@@ -100,7 +100,7 @@ export function SignupDialog({
         }
     }, [open, initialStep, initialEmail]);
 
-    // Cleanup on close
+    // Limpieza al cerrar
     const handleOpenChange = (newOpen: boolean) => {
         if (!newOpen) {
             setTimeout(() => {
@@ -113,13 +113,13 @@ export function SignupDialog({
         onOpenChange(newOpen);
     };
 
-    // Resend OTP
+    // Reenviar OTP
     const handleResendCode = async () => {
         if (resendCountdown > 0) return;
 
         setIsLoading(true);
         try {
-            // Re-signup triggers a new OTP email
+            // Re-registro activa nuevo email OTP
             const formData = signupForm.getValues();
             const { error } = await signUp(formData.email, formData.password, formData.name);
             if (error) {
@@ -135,7 +135,7 @@ export function SignupDialog({
         }
     };
 
-    // Submit signup form
+    // Enviar formulario de registro
     const handleSignupSubmit = async (data: z.infer<typeof signupFormSchema>) => {
         setIsLoading(true);
         try {
@@ -155,7 +155,7 @@ export function SignupDialog({
         }
     };
 
-    // Submit OTP
+    // Enviar OTP
     const handleOtpSubmit = async (data: z.infer<typeof otpSchema>) => {
         setIsLoading(true);
         try {

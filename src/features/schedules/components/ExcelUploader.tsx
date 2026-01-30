@@ -22,11 +22,8 @@ export function ExcelUploader() {
             const allSchedules = results.flat();
 
             setSchedules(allSchedules);
-            console.log("Parsed Schedules:", allSchedules);
-            alert(`Success! Parsed ${allSchedules.length} schedules from ${acceptedFiles.length} files.`);
         } catch (error) {
             console.error(error);
-            alert("Error parsing files. Check console.");
         } finally {
             setIsProcessing(false);
         }
@@ -83,7 +80,7 @@ export function ExcelUploader() {
                                 {schedules.length} rows extracted.
                             </p>
                         </div>
-                        <Button variant="outline" onClick={() => console.log(schedules)}>
+                        <Button variant="outline">
                             Log to Console
                         </Button>
                     </CardContent>

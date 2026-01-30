@@ -18,14 +18,14 @@ import { msalConfig } from "./config/authConfig";
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-// Initialize MSAL and Handle Redirect
+// Inicializar MSAL y manejar redirección
 msalInstance.initialize().then(() => {
-  // Default to first account if available
+  // Usar primera cuenta por defecto si está disponible
   if (!msalInstance.getActiveAccount() && msalInstance.getAllAccounts().length > 0) {
     msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
   }
 
-  // Optional: Event callback
+  // Opcional: Callback de eventos
   msalInstance.addEventCallback((event) => {
     if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
       // @ts-ignore
@@ -34,13 +34,13 @@ msalInstance.initialize().then(() => {
     }
   });
 
-  // Handle the redirect response (required for loginRedirect)
+  // Manejar respuesta de redirección (requerido para loginRedirect)
   msalInstance.handleRedirectPromise().then((authResult) => {
     if (authResult && authResult.account) {
       msalInstance.setActiveAccount(authResult.account);
     }
 
-    // Render the App only after MSAL is ready
+    // Renderizar la App solo después de que MSAL esté listo
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
         <MsalProvider instance={msalInstance}>

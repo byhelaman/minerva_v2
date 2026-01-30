@@ -181,7 +181,8 @@ CREATE TABLE IF NOT EXISTS public.zoom_meetings (
     timezone TEXT,
     join_url TEXT,
     created_at TIMESTAMPTZ,
-    synced_at TIMESTAMPTZ DEFAULT now()
+    synced_at TIMESTAMPTZ DEFAULT now(),
+    last_event_timestamp BIGINT
 );
 
 ALTER TABLE public.zoom_meetings ENABLE ROW LEVEL SECURITY;
