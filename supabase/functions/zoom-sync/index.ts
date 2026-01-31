@@ -39,8 +39,8 @@ serve(async (req: Request) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-  // Verificación de acceso: usuario con settings.manage O clave interna
-  const isAuthorized = await verifyAccess(req, supabase, 'settings.manage')
+  // Verificación de acceso: usuario con system.manage O clave interna
+  const isAuthorized = await verifyAccess(req, supabase, 'system.manage')
 
   if (!isAuthorized) {
     return new Response(

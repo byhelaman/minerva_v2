@@ -124,7 +124,7 @@ export const useZoomStore = create<ZoomState>((set, get) => ({
                 const [allMeetings, allUsers] = await Promise.all([
                     fetchAllPages<ZoomMeetingCandidate>(
                         'zoom_meetings',
-                        'meeting_id, topic, host_id, start_time, join_url'
+                        'meeting_id, topic, host_id, start_time, join_url, created_at'
                     ),
                     fetchAllPages<ZoomUser>(
                         'zoom_users',

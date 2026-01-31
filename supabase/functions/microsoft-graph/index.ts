@@ -81,7 +81,7 @@ serve(async (req: Request) => {
 
     try {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        await verifyPermission(req, supabase, 'settings.manage')
+        await verifyPermission(req, supabase, 'system.manage')
 
         const { action, folderId, fileId, sheetId, tableId, range, name, values } = await req.json()
 

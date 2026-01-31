@@ -10,6 +10,7 @@ RETURNS boolean
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
     user_permissions jsonb;

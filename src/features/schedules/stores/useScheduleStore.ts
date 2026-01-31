@@ -13,6 +13,14 @@ export interface DailyIncidence extends Schedule {
     feedback?: string;
 }
 
+export interface PublishedSchedule {
+    id: string;
+    published_by: string | null;
+    schedule_date: string;
+    schedule_data: Schedule[];
+    created_at: string;
+}
+
 interface ScheduleState {
     // Data
     baseSchedules: Schedule[]; // Loaded from Excel
@@ -44,9 +52,17 @@ interface ScheduleState {
     };
     refreshMsConfig: () => Promise<void>;
 
-    // Publish Action
+    // Publish Action (Excel)
     isPublishing: boolean;
     publishDailyChanges: () => Promise<void>;
+
+    // Published Schedules (Supabase)
+    latestPublished: PublishedSchedule | null;
+    dismissedVersions: string[]; // IDs of dismissed schedules
+    checkForUpdates: () => Promise<void>;
+    publishToSupabase: (overwrite?: boolean) => Promise<{ success: boolean; error?: string; exists?: boolean }>;
+    downloadPublished: (schedule: PublishedSchedule) => void;
+    dismissUpdate: (id: string) => void;
 }
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
@@ -54,6 +70,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     incidences: [],
     activeDate: null,
     isPublishing: false,
+    latestPublished: null,
+    dismissedVersions: JSON.parse(localStorage.getItem('dismissed_schedule_versions') || '[]'),
 
     msConfig: {
         isConnected: false,
@@ -284,5 +302,95 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         } finally {
             set({ isPublishing: false });
         }
+    },
+
+    // =============================================
+    // SUPABASE PUBLISHED SCHEDULES
+    // =============================================
+
+    checkForUpdates: async () => {
+        const { dismissedVersions } = get();
+
+        const { data, error } = await supabase
+            .from('published_schedules')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !data) return;
+
+        // Si ya fue descartado, no mostrar
+        if (dismissedVersions.includes(data.id)) return;
+
+        set({ latestPublished: data as PublishedSchedule });
+    },
+
+    publishToSupabase: async (overwrite = false) => {
+        const { activeDate, baseSchedules } = get();
+
+        if (!activeDate) {
+            return { success: false, error: 'No hay fecha activa seleccionada' };
+        }
+
+        // Validar fecha futura
+        const [day, month, year] = activeDate.split('/').map(Number);
+        const scheduleDate = new Date(year, month - 1, day);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (scheduleDate < today) {
+            return { success: false, error: 'Solo se pueden publicar horarios de fechas futuras' };
+        }
+
+        if (baseSchedules.length === 0) {
+            return { success: false, error: 'No hay horarios para publicar' };
+        }
+
+        // Verificar si ya existe
+        const { data: existing } = await supabase
+            .from('published_schedules')
+            .select('id')
+            .eq('schedule_date', activeDate)
+            .single();
+
+        if (existing && !overwrite) {
+            return { success: false, error: 'Ya existe un horario publicado para esta fecha', exists: true };
+        }
+
+        // Upsert
+        const { error } = await supabase
+            .from('published_schedules')
+            .upsert({
+                schedule_date: activeDate,
+                schedule_data: baseSchedules,
+                published_by: (await supabase.auth.getUser()).data.user?.id
+            }, { onConflict: 'schedule_date' });
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        toast.success('Horario publicado en Minerva');
+        return { success: true };
+    },
+
+    downloadPublished: (schedule: PublishedSchedule) => {
+        set({
+            baseSchedules: schedule.schedule_data,
+            activeDate: schedule.schedule_date,
+            latestPublished: null
+        });
+        toast.success(`Horario del ${schedule.schedule_date} descargado`);
+    },
+
+    dismissUpdate: (id: string) => {
+        const { dismissedVersions } = get();
+        const updated = [...dismissedVersions, id];
+        localStorage.setItem('dismissed_schedule_versions', JSON.stringify(updated));
+        set({
+            dismissedVersions: updated,
+            latestPublished: null
+        });
     }
 }));

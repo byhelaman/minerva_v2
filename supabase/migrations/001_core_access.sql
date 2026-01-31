@@ -37,13 +37,14 @@ INSERT INTO public.roles (name, description, hierarchy_level) VALUES
 INSERT INTO public.permissions (name, description, min_role_level) VALUES
     ('schedules.read', 'View own schedules', 10),
     ('schedules.write', 'Upload and edit schedules', 50),
+    ('schedules.manage', 'Publish and manage global schedules', 80),
     ('meetings.search', 'Search Zoom meeting history', 60),
     ('meetings.create', 'Create and edit Zoom links', 60),
     ('meetings.assign', 'Assign Zoom links to schedules', 60),
     ('users.view', 'View list of users', 80),
     ('users.manage', 'Create, delete, and change user roles', 80),
-    ('settings.view', 'View system settings', 80),
-    ('settings.manage', 'Modify system settings', 100);
+    ('system.view', 'View system settings', 80),
+    ('system.manage', 'Modify system settings', 100);
 
 INSERT INTO public.role_permissions (role, permission) VALUES
     ('viewer', 'schedules.read'),
@@ -56,21 +57,23 @@ INSERT INTO public.role_permissions (role, permission) VALUES
     ('moderator', 'meetings.assign'),
     ('admin', 'schedules.read'),
     ('admin', 'schedules.write'),
+    ('admin', 'schedules.manage'),
     ('admin', 'meetings.search'),
     ('admin', 'meetings.create'),
     ('admin', 'meetings.assign'),
     ('admin', 'users.view'),
     ('admin', 'users.manage'),
-    ('admin', 'settings.view'),
+    ('admin', 'system.view'),
     ('super_admin', 'schedules.read'),
     ('super_admin', 'schedules.write'),
+    ('super_admin', 'schedules.manage'),
     ('super_admin', 'meetings.search'),
     ('super_admin', 'meetings.create'),
     ('super_admin', 'meetings.assign'),
     ('super_admin', 'users.view'),
     ('super_admin', 'users.manage'),
-    ('super_admin', 'settings.view'),
-    ('super_admin', 'settings.manage');
+    ('super_admin', 'system.view'),
+    ('super_admin', 'system.manage');
 
 -- =============================================
 -- PROFILES
@@ -255,7 +258,7 @@ CREATE POLICY "role_permissions_select" ON public.role_permissions
 CREATE POLICY "profiles_select" ON public.profiles
     FOR SELECT USING (
         id = (SELECT auth.uid())
-        OR COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0) >= 80
+        OR COALESCE(((SELECT auth.jwt()) ->> 'hierarchy_level')::int, 0) >= 80
     );
 
 CREATE POLICY "profiles_insert" ON public.profiles
@@ -266,12 +269,12 @@ CREATE POLICY "profiles_insert" ON public.profiles
 CREATE POLICY "profiles_update" ON public.profiles
     FOR UPDATE USING (
         id = (SELECT auth.uid())
-        OR COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0) >= 80
+        OR COALESCE(((SELECT auth.jwt()) ->> 'hierarchy_level')::int, 0) >= 80
     );
 
 CREATE POLICY "profiles_delete" ON public.profiles
     FOR DELETE USING (
-        COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0) >= 100
+        COALESCE(((SELECT auth.jwt()) ->> 'hierarchy_level')::int, 0) >= 100
     );
 
 -- =============================================

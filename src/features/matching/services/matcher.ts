@@ -12,6 +12,7 @@ export interface ZoomMeetingCandidate {
     host_id: string;
     start_time: string;
     join_url?: string;
+    created_at?: string;
 }
 
 export interface ZoomUserCandidate {

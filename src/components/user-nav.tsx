@@ -80,7 +80,7 @@ export function UserNav() {
                         </Link>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
-                <RequirePermission permission="settings.manage">
+                <RequirePermission permission="system.manage">
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                         <Link to="/system">

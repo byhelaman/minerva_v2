@@ -17,12 +17,15 @@ import { AssignLinkModal } from "./modals/AssignLinkModal";
 import { useZoomStore } from "@/features/matching/stores/useZoomStore";
 import { MatchingService } from "@/features/matching/services/matcher";
 import { useScheduleStore } from "@/features/schedules/stores/useScheduleStore";
+import { ScheduleUpdateBanner } from "./ScheduleUpdateBanner";
+import { PublishToDbModal } from "./modals/PublishToDbModal";
 
 export function ScheduleDashboard() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+    const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
 
     // Global Store
     const {
@@ -34,7 +37,7 @@ export function ScheduleDashboard() {
         setActiveDate,
         getComputedSchedules,
         refreshMsConfig,
-        publishDailyChanges,
+        // publishDailyChanges, // Used in PublishToDbModal now
         isPublishing,
         msConfig
     } = useScheduleStore();
@@ -366,16 +369,23 @@ export function ScheduleDashboard() {
                 liveTimeFilter={showLiveMode ? liveTimeFilter : undefined}
                 liveDateFilter={showLiveMode ? liveDateFilter : undefined}
                 initialPageSize={100}
-                onPublish={publishDailyChanges}
+                onPublish={() => setIsPublishModalOpen(true)}
                 isPublishing={isPublishing}
                 canPublish={msConfig.isConnected && schedules.length > 0}
             />
+
+            <ScheduleUpdateBanner />
 
             {/* Upload Modal */}
             <UploadModal
                 open={isUploadModalOpen}
                 onOpenChange={setIsUploadModalOpen}
                 onUploadComplete={handleUploadComplete}
+            />
+
+            <PublishToDbModal
+                open={isPublishModalOpen}
+                onOpenChange={setIsPublishModalOpen}
             />
 
             {/* Feature Modals */}

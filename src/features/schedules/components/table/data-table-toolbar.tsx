@@ -424,8 +424,7 @@ export function DataTableToolbar<TData>({
                                     <CalendarCheck />
                                     Copy Schedule
                                 </DropdownMenuItem>
-                                {/* <RequirePermission permission="schedules.manage"> */}
-                                <RequirePermission>
+                                <RequirePermission permission="schedules.manage">
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={onPublish} disabled={!canPublish || isPublishing}>
                                         {isPublishing ? <Loader2 className="animate-spin" /> : <CloudUpload />}

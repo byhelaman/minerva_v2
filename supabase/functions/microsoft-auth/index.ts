@@ -86,7 +86,7 @@ serve(async (req: Request) => {
 
 async function handleInit(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    const user = await verifyPermission(req, supabase, 'settings.manage')
+    const user = await verifyPermission(req, supabase, 'system.manage')
     const { data: state, error: stateError } = await supabase.rpc('create_oauth_state', { p_user_id: user.id })
 
     if (stateError || !state) throw new Error('Error creating OAuth state')
@@ -163,7 +163,7 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
 // === STATUS ===
 async function handleStatus(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    await verifyPermission(req, supabase, 'settings.manage')
+    await verifyPermission(req, supabase, 'system.manage')
 
     const { data: account, error } = await supabase
         .from('microsoft_account')
@@ -207,7 +207,7 @@ interface UpdateConfigBody {
 
 async function handleUpdateConfig(req: Request, body: UpdateConfigBody, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    await verifyPermission(req, supabase, 'settings.manage')
+    await verifyPermission(req, supabase, 'system.manage')
 
     const { type, id, name } = body
 
@@ -237,7 +237,7 @@ async function handleUpdateConfig(req: Request, body: UpdateConfigBody, corsHead
 // === DISCONNECT ===
 async function handleDisconnect(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    await verifyPermission(req, supabase, 'settings.manage')
+    await verifyPermission(req, supabase, 'system.manage')
     await supabase.from('microsoft_account').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -114,6 +114,7 @@ CREATE OR REPLACE FUNCTION create_oauth_state(p_user_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
     v_state TEXT;
@@ -130,6 +131,7 @@ CREATE OR REPLACE FUNCTION validate_oauth_state(p_state TEXT)
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
     v_user_id UUID;
@@ -164,7 +166,7 @@ ALTER TABLE public.zoom_users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow read for valid roles" ON public.zoom_users
     FOR SELECT TO authenticated
     USING (
-        ((auth.jwt() -> 'permissions')::jsonb ? 'meetings.search')
+        ((SELECT auth.jwt()) -> 'permissions')::jsonb ? 'meetings.search'
     );
 
 CREATE POLICY "Allow full access for service_role" ON public.zoom_users
@@ -190,7 +192,7 @@ ALTER TABLE public.zoom_meetings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow read for valid roles" ON public.zoom_meetings
     FOR SELECT TO authenticated
     USING (
-        ((auth.jwt() -> 'permissions')::jsonb ? 'meetings.search')
+        ((SELECT auth.jwt()) -> 'permissions')::jsonb ? 'meetings.search'
     );
 
 CREATE POLICY "Allow full access for service_role" ON public.zoom_meetings

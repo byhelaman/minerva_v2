@@ -81,8 +81,8 @@ serve(async (req: Request) => {
 async function handleInit(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verificación RBAC (Permiso: settings.manage)
-    const user = await verifyPermission(req, supabase, 'settings.manage')
+    // Verificación RBAC (Permiso: system.manage)
+    const user = await verifyPermission(req, supabase, 'system.manage')
 
     // Crear estado
     const { data: state, error: stateError } = await supabase.rpc('create_oauth_state', {
@@ -181,8 +181,8 @@ async function handleCallback(url: URL, corsHeaders: Record<string, string>): Pr
 async function handleStatus(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verificación RBAC (Permiso: settings.manage)
-    await verifyPermission(req, supabase, 'settings.manage')
+    // Verificación RBAC (Permiso: system.manage)
+    await verifyPermission(req, supabase, 'system.manage')
 
     // Seleccionamos campos no sensibles. NO seleccionamos IDs de secretos aquí.
     const { data: account, error } = await supabase
@@ -213,8 +213,8 @@ async function handleStatus(req: Request, corsHeaders: Record<string, string>): 
 async function handleDisconnect(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verificación RBAC (Permiso: settings.manage)
-    await verifyPermission(req, supabase, 'settings.manage')
+    // Verificación RBAC (Permiso: system.manage)
+    await verifyPermission(req, supabase, 'system.manage')
 
     // Eliminar cuenta. ¿Integridad referencial o limpieza manual de secretos?
     // Por ahora, solo borramos la cuenta. Los secretos quedan en vault sin referencia.

@@ -100,29 +100,18 @@ authenticated
 WITH CHECK
 (true);
 
-CREATE POLICY "bug_reports_select_own" ON public.bug_reports
-    FOR
-SELECT TO authenticated
-USING
-(user_id =
-(SELECT auth.uid())
-);
-
-CREATE POLICY "bug_reports_select_admin" ON public.bug_reports
-    FOR
-SELECT TO authenticated
-USING
-(
-        COALESCE
-((SELECT (auth.jwt() ->> 'hierarchy_level'))
-::int, 0) >= 80
+-- Consolidar SELECT policies para evitar múltiples permissive policies
+CREATE POLICY "bug_reports_select" ON public.bug_reports
+    FOR SELECT TO authenticated
+    USING (
+        user_id = (SELECT auth.uid())
+        OR COALESCE(((SELECT auth.jwt()) ->> 'hierarchy_level')::int, 0) >= 80
     );
 
 CREATE POLICY "bug_reports_update_admin" ON public.bug_reports
-    FOR
-UPDATE TO authenticated
+    FOR UPDATE TO authenticated
     USING (
-        COALESCE((SELECT (auth.jwt() ->> 'hierarchy_level'))::int, 0) >= 80
+        COALESCE(((SELECT auth.jwt()) ->> 'hierarchy_level')::int, 0) >= 80
     );
 
 CREATE INDEX

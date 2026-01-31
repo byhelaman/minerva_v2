@@ -104,10 +104,15 @@ const searchColumns: ColumnDef<MeetingRow>[] = [
             <DataTableColumnHeader column={column} title="Created At" className="justify-center" />
         ),
         cell: ({ row }) => {
-            const date = new Date(row.getValue("created_at"));
+            const val = row.getValue("created_at") as string;
+            if (!val) return <div className="text-center text-muted-foreground">Unknown</div>;
             return (
-                <div className="text-sm text-center">
-                    {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className="text-center">
+                    {new Date(val).toLocaleDateString("es-PE", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                    })}
                 </div>
             );
         },
@@ -174,7 +179,7 @@ export function SearchLinkModal({ open, onOpenChange }: SearchLinkModalProps) {
                 topic: meeting.topic,
                 host_email: host?.email || 'Unknown',
                 host_name: host?.display_name || 'Unknown',
-                created_at: meeting.start_time,
+                created_at: meeting.created_at || meeting.start_time,
                 join_url: meeting.join_url,
             };
         });
