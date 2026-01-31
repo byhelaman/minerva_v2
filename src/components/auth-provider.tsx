@@ -3,6 +3,7 @@ import { Session, User, AuthChangeEvent } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { jwtDecode } from "jwt-decode";
 import { logger } from "@/lib/logger";
+import { toast } from "sonner";
 
 // Tipos
 export interface Profile {
@@ -233,6 +234,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Cerrar sesión
     const signOut = async () => {
+        // Limpiar configuración de versiones descartadas y estado de sesión
+        const keysToRemove = [
+            'dismissed_schedule_versions',
+            'minerva_connection_config',
+            'minerva_rate_limit',
+            'current_schedule_version'
+        ];
+
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+
+        // Limpiar caché de UI con prefijos dinámicos
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('minerva_ui_')) {
+                localStorage.removeItem(key);
+            }
+        });
+
+        toast.dismiss();
         await supabase.auth.signOut();
     };
 

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.published_schedules (
     schedule_date TEXT NOT NULL,  -- Formato: DD/MM/YYYY
     schedule_data JSONB NOT NULL, -- Array de Schedule[]
     created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
     
     CONSTRAINT published_schedules_date_unique UNIQUE (schedule_date)
 );

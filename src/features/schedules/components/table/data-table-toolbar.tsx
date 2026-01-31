@@ -408,7 +408,7 @@ export function DataTableToolbar<TData>({
                         </Button>
                     )}
                     {!hideActions && (
-                        <DropdownMenu>
+                        <DropdownMenu modal={false}>
                             <DropdownMenuTrigger asChild>
                                 <Button size="sm" variant="outline" disabled={!hasSchedules}>
                                     Actions

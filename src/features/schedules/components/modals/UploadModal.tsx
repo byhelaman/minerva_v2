@@ -302,7 +302,7 @@ export function UploadModal({
                     >
                         {isProcessing ? (
                             <>
-                                <Loader2 className="size-4 animate-spin" />
+                                <Loader2 className="animate-spin" />
                                 Processing...
                             </>
                         ) : (

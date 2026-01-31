@@ -19,6 +19,7 @@ export interface PublishedSchedule {
     schedule_date: string;
     schedule_data: Schedule[];
     created_at: string;
+    updated_at: string;
 }
 
 interface ScheduleState {
@@ -58,12 +59,24 @@ interface ScheduleState {
 
     // Published Schedules (Supabase)
     latestPublished: PublishedSchedule | null;
+    currentVersionId: string | null; // ID of the currently loaded/downloaded version
+    currentVersionUpdatedAt: string | null; // Timestamp of the currently loaded version
     dismissedVersions: string[]; // IDs of dismissed schedules
     checkForUpdates: () => Promise<void>;
+    checkIfScheduleExists: (date: string) => Promise<boolean>;
     publishToSupabase: (overwrite?: boolean) => Promise<{ success: boolean; error?: string; exists?: boolean }>;
     downloadPublished: (schedule: PublishedSchedule) => void;
     dismissUpdate: (id: string) => void;
 }
+
+// Helper to get initial state
+const getSavedVersion = () => {
+    try {
+        return JSON.parse(localStorage.getItem('current_schedule_version') || '{}');
+    } catch {
+        return {};
+    }
+};
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
     baseSchedules: [],
@@ -71,6 +84,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     activeDate: null,
     isPublishing: false,
     latestPublished: null,
+    currentVersionId: getSavedVersion().id || null,
+    currentVersionUpdatedAt: getSavedVersion().updated_at || null,
     dismissedVersions: JSON.parse(localStorage.getItem('dismissed_schedule_versions') || '[]'),
 
     msConfig: {
@@ -87,7 +102,6 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     upsertIncidence: (newIncidence) => {
         set(state => {
-            // Remove existing incidence for this class if any
             const filtered = state.incidences.filter(i =>
                 !(i.date === newIncidence.date &&
                     i.program === newIncidence.program &&
@@ -111,8 +125,6 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     getComputedSchedules: () => {
         const { baseSchedules, incidences } = get();
-
-        // Merge: If an incidence exists for a schedule, use the incidence (which has extra fields)
         return baseSchedules.map(sch => {
             const match = incidences.find(inc =>
                 inc.date === sch.date &&
@@ -154,9 +166,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         set({ isPublishing: true });
 
         try {
-            // --- 1. Publish Incidences Log (Historical Append) ---
             if (msConfig.incidencesFileId && incidences.length > 0) {
-                // Fetch Tables
                 const { data: content, error: listError } = await supabase.functions.invoke('microsoft-graph', {
                     body: { action: 'list-content', fileId: msConfig.incidencesFileId }
                 });
@@ -164,63 +174,33 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
                 if (listError) throw listError;
 
                 const table = content.value.find((i: any) => i.type === 'table');
-                if (!table) {
-                    throw new Error('No table found in Incidences file. Please create a table in Excel.');
-                }
+                if (!table) throw new Error('No table found in Incidences file.');
 
-                // Prepare rows based on DailyIncidence structure
-                // Columns: Date, Shift, Branch, Start, End, Code, Instructor, Program, Mins, Units, Status, Substitute, Type, Subtype, Desc, Dept, Feedback
                 const rows = incidences.map(inc => [
-                    inc.date,
-                    inc.shift,
-                    inc.branch,
-                    inc.start_time,
-                    inc.end_time,
-                    inc.code,
-                    inc.instructor,
-                    inc.program,
-                    inc.minutes,
-                    inc.units,
-                    inc.status || '',
-                    inc.substitute || '',
-                    inc.type || '',
-                    inc.subtype || '',
-                    inc.description || '',
-                    inc.department || '',
+                    inc.date, inc.shift, inc.branch, inc.start_time, inc.end_time,
+                    inc.code, inc.instructor, inc.program, inc.minutes, inc.units,
+                    inc.status || '', inc.substitute || '', inc.type || '',
+                    inc.subtype || '', inc.description || '', inc.department || '',
                     inc.feedback || ''
                 ]);
 
-                // Append
                 const { error: appendError } = await supabase.functions.invoke('microsoft-graph', {
-                    body: {
-                        action: 'append-row',
-                        fileId: msConfig.incidencesFileId,
-                        tableId: table.id,
-                        values: rows
-                    }
+                    body: { action: 'append-row', fileId: msConfig.incidencesFileId, tableId: table.id, values: rows }
                 });
 
                 if (appendError) throw appendError;
                 toast.success(`Synced ${incidences.length} incidences to log`);
             }
 
-            // --- 2. Publish Daily Schedule (Snapshot) ---
             if (msConfig.schedulesFolderId && activeDate) {
-                // For now, publishing the MERGED view (computed schedules) to the daily sheet
                 const computed = state.getComputedSchedules();
-
-                // Parse activeDate which might be YYYY-MM-DD (init) or DD/MM/YYYY (from Excel)
                 let year, month;
                 if (activeDate.includes('/')) {
                     const parts = activeDate.split('/');
-                    // DD/MM/YYYY
-                    year = parts[2];
-                    month = parts[1];
+                    year = parts[2]; month = parts[1];
                 } else {
                     const parts = activeDate.split('-');
-                    // YYYY-MM-DD
-                    year = parts[0];
-                    month = parts[1];
+                    year = parts[0]; month = parts[1];
                 }
 
                 const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -236,15 +216,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
                 const monthlyFile = children.value.find((f: any) => {
                     const name = f.name.toLowerCase();
                     return name.endsWith('.xlsx') && (
-                        name.includes(monthName.toLowerCase()) ||
-                        name.includes(yearMonth) ||
-                        name.includes(yearMonthHyphen)
+                        name.includes(monthName.toLowerCase()) || name.includes(yearMonth) || name.includes(yearMonthHyphen)
                     );
                 });
 
-                if (!monthlyFile) {
-                    throw new Error(`Could not find a schedule file for "${monthName}" or "${year}_${month}"`);
-                }
+                if (!monthlyFile) throw new Error(`Could not find a schedule file for "${monthName}"`);
 
                 const sheetName = activeDate;
                 let worksheetId = null;
@@ -270,32 +246,20 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
                 const dataRows = computed.map(s => {
                     const inc = s as DailyIncidence;
                     return [
-                        s.start_time,
-                        s.end_time,
-                        s.program,
-                        s.instructor,
-                        s.branch,
-                        inc.status || '',         // From incidence if exists
-                        inc.description || ''     // From incidence if exists
+                        s.start_time, s.end_time, s.program, s.instructor, s.branch,
+                        inc.status || '', inc.description || ''
                     ];
                 });
 
                 const values = [headers, ...dataRows];
 
                 const { error: writeError } = await supabase.functions.invoke('microsoft-graph', {
-                    body: {
-                        action: 'update-range',
-                        fileId: monthlyFile.id,
-                        sheetId: worksheetId,
-                        values: values,
-                        range: 'A1'
-                    }
+                    body: { action: 'update-range', fileId: monthlyFile.id, sheetId: worksheetId, values: values, range: 'A1' }
                 });
 
                 if (writeError) throw writeError;
                 toast.success(`Published schedule for ${activeDate}`);
             }
-
         } catch (error: any) {
             console.error('Publish failed', error);
             toast.error(`Publish failed: ${error.message}`);
@@ -304,12 +268,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         }
     },
 
-    // =============================================
-    // SUPABASE PUBLISHED SCHEDULES
-    // =============================================
-
     checkForUpdates: async () => {
-        const { dismissedVersions } = get();
+        const { dismissedVersions, currentVersionId, currentVersionUpdatedAt } = get();
 
         const { data, error } = await supabase
             .from('published_schedules')
@@ -323,65 +283,88 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         // Si ya fue descartado, no mostrar
         if (dismissedVersions.includes(data.id)) return;
 
-        set({ latestPublished: data as PublishedSchedule });
+        const isNewId = currentVersionId !== data.id;
+        // Si el ID es igual, verificar si la fecha de actualización es más reciente
+        // Si currentVersionUpdatedAt es null (versión legacy), asumimos que hay update si hay fecha remota
+        const isNewVersion = !isNewId && (!currentVersionUpdatedAt || (data.updated_at && new Date(data.updated_at) > new Date(currentVersionUpdatedAt)));
+
+        if (isNewId || isNewVersion) {
+            set({ latestPublished: data as PublishedSchedule });
+        }
+    },
+
+    checkIfScheduleExists: async (date: string) => {
+        const { data } = await supabase
+            .from('published_schedules')
+            .select('id')
+            .eq('schedule_date', date)
+            .single();
+        return !!data;
     },
 
     publishToSupabase: async (overwrite = false) => {
         const { activeDate, baseSchedules } = get();
 
-        if (!activeDate) {
-            return { success: false, error: 'No hay fecha activa seleccionada' };
-        }
+        if (!activeDate) return { success: false, error: 'No active date selected' };
 
-        // Validar fecha futura
         const [day, month, year] = activeDate.split('/').map(Number);
         const scheduleDate = new Date(year, month - 1, day);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        if (scheduleDate < today) {
-            return { success: false, error: 'Solo se pueden publicar horarios de fechas futuras' };
-        }
+        if (scheduleDate < today) return { success: false, error: 'Only future schedules can be published' };
+        if (baseSchedules.length === 0) return { success: false, error: 'No schedules to publish' };
 
-        if (baseSchedules.length === 0) {
-            return { success: false, error: 'No hay horarios para publicar' };
-        }
-
-        // Verificar si ya existe
         const { data: existing } = await supabase
             .from('published_schedules')
             .select('id')
             .eq('schedule_date', activeDate)
             .single();
 
-        if (existing && !overwrite) {
-            return { success: false, error: 'Ya existe un horario publicado para esta fecha', exists: true };
-        }
+        if (existing && !overwrite) return { success: false, error: 'A schedule is already published for this date', exists: true };
 
-        // Upsert
-        const { error } = await supabase
+        // Standard Upsert with updated_at timestamp
+        const { data: published, error } = await supabase
             .from('published_schedules')
             .upsert({
                 schedule_date: activeDate,
                 schedule_data: baseSchedules,
-                published_by: (await supabase.auth.getUser()).data.user?.id
-            }, { onConflict: 'schedule_date' });
+                published_by: (await supabase.auth.getUser()).data.user?.id,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'schedule_date' })
+            .select()
+            .single();
 
-        if (error) {
-            return { success: false, error: error.message };
+        if (error) return { success: false, error: error.message };
+
+        // Auto-accept the version we just published to prevent self-notification
+        if (published) {
+            const versionData = { id: published.id, updated_at: published.updated_at };
+            localStorage.setItem('current_schedule_version', JSON.stringify(versionData));
+
+            set({
+                currentVersionId: published.id,
+                currentVersionUpdatedAt: published.updated_at,
+                latestPublished: null
+            });
         }
 
-        toast.success('Horario publicado en Minerva');
+        toast.success('Schedule published to Minerva');
         return { success: true };
     },
 
     downloadPublished: (schedule: PublishedSchedule) => {
+        const versionData = { id: schedule.id, updated_at: schedule.updated_at };
+        localStorage.setItem('current_schedule_version', JSON.stringify(versionData));
+
         set({
             baseSchedules: schedule.schedule_data,
             activeDate: schedule.schedule_date,
-            latestPublished: null
+            latestPublished: null,
+            currentVersionId: schedule.id,
+            currentVersionUpdatedAt: schedule.updated_at
         });
-        toast.success(`Horario del ${schedule.schedule_date} descargado`);
+        toast.success(`Schedule for ${schedule.schedule_date} downloaded`);
     },
 
     dismissUpdate: (id: string) => {
@@ -392,5 +375,5 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
             dismissedVersions: updated,
             latestPublished: null
         });
-    }
+    },
 }));

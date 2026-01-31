@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useScheduleStore } from "@/features/schedules/stores/useScheduleStore";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface PublishToDbModalProps {
     open: boolean;
@@ -18,92 +19,147 @@ interface PublishToDbModalProps {
 }
 
 export function PublishToDbModal({ open, onOpenChange }: PublishToDbModalProps) {
-    const { activeDate, baseSchedules, publishDailyChanges, publishToSupabase } = useScheduleStore();
+    const { activeDate, baseSchedules, publishDailyChanges, publishToSupabase, checkIfScheduleExists } = useScheduleStore();
     const [isPublishing, setIsPublishing] = useState(false);
+    const [isLoadingCheck, setIsLoadingCheck] = useState(false);
     const [needsOverwrite, setNeedsOverwrite] = useState(false);
+    const [validationError, setValidationError] = useState<string | null>(null);
 
-    const handlePublish = async () => {
+    // Verify if schedule exists on open
+    useEffect(() => {
+        if (open && activeDate) {
+            setNeedsOverwrite(false); // Reset state on open
+            setValidationError(null);
+
+            // Validate date before checking DB
+            const [day, month, year] = activeDate.split('/').map(Number);
+            const scheduleDate = new Date(year, month - 1, day);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (scheduleDate < today) {
+                setValidationError('Only future schedules can be published');
+                return;
+            }
+
+            const check = async () => {
+                setIsLoadingCheck(true);
+                try {
+                    const exists = await checkIfScheduleExists(activeDate);
+                    setNeedsOverwrite(exists);
+                } catch (error) {
+                    console.error("Failed to check schedule existence", error);
+                } finally {
+                    setIsLoadingCheck(false);
+                }
+            };
+            check();
+        } else {
+            // Reset state when closed
+            if (!open) {
+                setIsPublishing(false);
+            }
+        }
+    }, [open, activeDate, checkIfScheduleExists]);
+
+    const performPublish = async (overwrite: boolean) => {
         setIsPublishing(true);
-        setNeedsOverwrite(false);
         try {
-            // 1. Publish to Excel (Original Flow)
+            // 1. Publish to Excel (Both fresh and overwrite need to update Excel)
+            // Note: If this fails, we stop.
             await publishDailyChanges();
 
-            // 2. Publish to Supabase (New Flow)
-            const result = await publishToSupabase(false); // Try without overwrite first
+            // 2. Publish to Supabase
+            const result = await publishToSupabase(overwrite);
 
-            if (!result.success && result.exists) {
+            // Safety check: if we thought it was fresh but it exists (race condition)
+            if (!result.success && result.exists && !overwrite) {
                 setNeedsOverwrite(true);
-                setIsPublishing(false);
-                return; // Stop here, ask for overwrite
+                // Don't close, let user decide to overwrite
+                return;
             }
 
             if (result.success) {
                 onOpenChange(false);
+            } else if (result.error) {
+                toast.error(result.error);
             }
         } catch (error) {
             console.error("Publish flow failed", error);
-        } finally {
-            if (!needsOverwrite) setIsPublishing(false);
-        }
-    };
-
-    const handleOverwrite = async () => {
-        setIsPublishing(true);
-        try {
-            // Force overwrite on Supabase
-            await publishToSupabase(true);
-            onOpenChange(false);
-            setNeedsOverwrite(false);
+            toast.error("An unexpected error occurred during publish");
         } finally {
             setIsPublishing(false);
         }
     };
+
+    const handlePublish = () => performPublish(false);
+    const handleOverwrite = () => performPublish(true);
 
     return (
         <AlertDialog open={open} onOpenChange={(val) => !isPublishing && onOpenChange(val)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>
-                        {needsOverwrite ? "Schedule Already Exists" : "Publish Schedule"}
+                        {isLoadingCheck ? "Checking..." : (validationError ? "Cannot Publish Schedule" : (needsOverwrite ? "Schedule Already Exists" : "Publish Schedule"))}
                     </AlertDialogTitle>
-                    <AlertDialogDescription>
-                        {needsOverwrite ? (
-                            <span className="text-destructive font-medium">
-                                A schedule for {activeDate} has already been published. Do you want to overwrite it?
-                                This will update the version available to all users.
-                            </span>
-                        ) : (
-                            <>
-                                Are you sure you want to publish the schedule for <strong>{activeDate}</strong>?
-                                <br /><br />
-                                This will:
-                                <ul className="list-disc pl-5 mt-2 space-y-1">
-                                    <li>Update the Excel file in OneDrive</li>
-                                    <li>Save the schedule to the database</li>
-                                    <li>Notify all users of the update</li>
-                                </ul>
-                                <p className="mt-4 text-xs text-muted-foreground">
-                                    Total Records: {baseSchedules.length}
-                                </p>
-                            </>
-                        )}
+                    <AlertDialogDescription asChild>
+                        <div>
+                            {isLoadingCheck ? (
+                                <div className="flex items-center justify-center py-4">
+                                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : validationError ? (
+                                <span>
+                                    The schedule for <strong>{activeDate}</strong> is not a future date.
+                                    <br />
+                                    {validationError}
+                                </span>
+                            ) : needsOverwrite ? (
+                                <span>
+                                    A schedule for <strong>{activeDate}</strong> has already been published.
+                                    <br />
+                                    If you proceed, it will replace the existing schedule for all users.
+                                </span>
+                            ) : (
+                                <>
+                                    Are you sure you want to publish the schedule for <strong>{activeDate}</strong>?
+                                    <br /><br />
+                                    This will:
+                                    <ul className="list-disc pl-5 mt-2 space-y-1">
+                                        <li>Update the Excel file in OneDrive</li>
+                                        <li>Save the schedule to the database</li>
+                                        <li>Notify all users of the update</li>
+                                    </ul>
+                                    <p className="mt-4 text-sm text-muted-foreground">
+                                        Total Records: {baseSchedules.length}
+                                    </p>
+                                </>
+                            )}
+                        </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isPublishing} onClick={() => setNeedsOverwrite(false)}>
-                        Cancel
-                    </AlertDialogCancel>
-                    {needsOverwrite ? (
-                        <AlertDialogAction onClick={handleOverwrite} disabled={isPublishing} className="bg-destructive hover:bg-destructive/90">
-                            {isPublishing ? <Loader2 className="animate-spin mr-2" /> : null}
-                            Overwrite
+                    {validationError ? (
+                        <AlertDialogAction onClick={() => onOpenChange(false)}>
+                            Close
                         </AlertDialogAction>
                     ) : (
-                        <AlertDialogAction onClick={handlePublish} disabled={isPublishing}>
-                            {isPublishing ? <Loader2 className="animate-spin mr-2" /> : null}
-                            Publish
-                        </AlertDialogAction>
+                        <>
+                            <AlertDialogCancel disabled={isPublishing} onClick={() => onOpenChange(false)}>
+                                Cancel
+                            </AlertDialogCancel>
+                            {needsOverwrite ? (
+                                <AlertDialogAction onClick={handleOverwrite} disabled={isPublishing} className="border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 focus-visible:ring-destructive/20 focus-visible:border-destructive dark:border-destructive/50 dark:bg-destructive/10 dark:text-destructive dark:hover:bg-destructive/20 dark:hover:text-destructive dark:hover:border-destructive/50 dark:focus-visible:ring-destructive/20 dark:focus-visible:border-destructive">
+                                    {isPublishing ? <Loader2 className="animate-spin" /> : null}
+                                    Replace
+                                </AlertDialogAction>
+                            ) : (
+                                <AlertDialogAction onClick={handlePublish} disabled={isPublishing || isLoadingCheck}>
+                                    {isPublishing || isLoadingCheck ? <Loader2 className="animate-spin" /> : null}
+                                    {isLoadingCheck ? "Checking..." : "Publish"}
+                                </AlertDialogAction>
+                            )}
+                        </>
                     )}
                 </AlertDialogFooter>
             </AlertDialogContent>
