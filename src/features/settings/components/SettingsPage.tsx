@@ -25,7 +25,7 @@ import { useTheme } from "@/components/theme-provider";
 import { useSettings } from "@/components/settings-provider";
 import { BaseDirectory, exists, remove } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
-import { AUTOSAVE_FILENAME, SETTINGS_FILENAME } from "@/lib/constants";
+import { STORAGE_FILES } from "@/lib/constants";
 import { useTranslation } from "react-i18next";
 
 
@@ -39,16 +39,16 @@ export function SettingsPage() {
             let filesDeleted = 0;
 
             // Eliminar autoguardado de horarios
-            const autosaveExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+            const autosaveExists = await exists(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
             if (autosaveExists) {
-                await remove(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                await remove(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
                 filesDeleted++;
             }
 
             // Eliminar archivo de configuración
-            const settingsExists = await exists(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+            const settingsExists = await exists(STORAGE_FILES.APP_SETTINGS, { baseDir: BaseDirectory.AppLocalData });
             if (settingsExists) {
-                await remove(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                await remove(STORAGE_FILES.APP_SETTINGS, { baseDir: BaseDirectory.AppLocalData });
                 filesDeleted++;
             }
 

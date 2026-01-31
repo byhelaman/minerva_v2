@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { STORAGE_KEYS } from "@/lib/constants";
 import {
     isLockedOut,
     recordFailedAttempt,
@@ -66,7 +67,7 @@ function LoginForm({
     } = useForm<LoginFormData>({
         resolver: zodResolver(loginSchema),
         defaultValues: {
-            email: localStorage.getItem("minerva_last_email") || "",
+            email: localStorage.getItem(STORAGE_KEYS.AUTH_LAST_EMAIL) || "",
         },
     });
 
@@ -115,7 +116,7 @@ function LoginForm({
             }
         } else {
             // Login exitoso - guardar email y resetear rate limiter
-            localStorage.setItem("minerva_last_email", data.email);
+            localStorage.setItem(STORAGE_KEYS.AUTH_LAST_EMAIL, data.email);
             resetAttempts();
             toast.success("Welcome to Minerva");
             navigate(from, { replace: true });

@@ -57,7 +57,6 @@ interface ScheduleDataTableProps<TData, TValue> {
     isPublishing?: boolean;
     canPublish?: boolean;
     initialColumnVisibility?: VisibilityState;
-    isRefreshing?: boolean;
 }
 
 export function ScheduleDataTable<TData, TValue>({
@@ -276,7 +275,6 @@ export function ScheduleDataTable<TData, TValue>({
                 onPublish={onPublish}
                 isPublishing={isPublishing}
                 canPublish={canPublish}
-                isRefreshing={props.isRefreshing}
             />
 
             {/* Table */}

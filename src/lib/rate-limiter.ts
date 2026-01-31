@@ -8,10 +8,12 @@
  * - Estado persistido en localStorage para sobrevivir recargas
  */
 
+import { STORAGE_KEYS } from "@/lib/constants";
+
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 30; // segundos
 const LOCKOUT_MULTIPLIER = 2; // cada lockout duplica el tiempo
-const STORAGE_KEY = "minerva_rate_limit";
+const STORAGE_KEY = STORAGE_KEYS.RATE_LIMIT;
 
 interface RateLimitState {
     attempts: number;

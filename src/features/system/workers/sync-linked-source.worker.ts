@@ -9,7 +9,7 @@ export type SyncWorkerMessage = {
 
 export type SyncWorkerResponse =
     | { type: 'SYNC_START' }
-    | { type: 'SYNC_SUCCESS'; data: Record<string, any[]>; timestamp: number }
+    | { type: 'SYNC_SUCCESS'; data: Record<string, any[]>; sheets: any[]; timestamp: number }
     | { type: 'SYNC_ERROR'; error: string };
 
 self.onmessage = async (e: MessageEvent<SyncWorkerMessage>) => {
@@ -56,7 +56,7 @@ self.onmessage = async (e: MessageEvent<SyncWorkerMessage>) => {
         }
 
         if (targetItems.length === 0) {
-            self.postMessage({ type: 'SYNC_SUCCESS', data: {}, timestamp: Date.now() });
+            self.postMessage({ type: 'SYNC_SUCCESS', data: {}, sheets: [], timestamp: Date.now() });
             return;
         }
 
@@ -114,6 +114,7 @@ self.onmessage = async (e: MessageEvent<SyncWorkerMessage>) => {
         self.postMessage({
             type: 'SYNC_SUCCESS',
             data: allSheetsData,
+            sheets: targetItems,
             timestamp: Date.now()
         });
 

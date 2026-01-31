@@ -19,7 +19,7 @@ interface CreateLinkModalProps {
 }
 
 export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
-    const { meetings, users, isLoadingData, isInitialized, fetchZoomData, createMeetings, updateMatchings, isExecuting } = useZoomStore();
+    const { meetings, users, isLoadingData, fetchZoomData, createMeetings, updateMatchings, isExecuting } = useZoomStore();
 
     // Usar hook reutilizable para mapa de anfitriones
     const hostMap = useHostMap();
@@ -41,15 +41,6 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
             setDailyOnly(false);
         }
     }, [open]);
-
-    // Cargar datos de Zoom al abrir
-    useEffect(() => {
-        if (open) {
-            if (!isInitialized && !isLoadingData) {
-                fetchZoomData();
-            }
-        }
-    }, [open, isInitialized, isLoadingData, fetchZoomData]);
 
     // Crear instancia del MatchingService (ahora permite arrays vacíos)
     const matcher = useMemo(() => {
@@ -394,18 +385,16 @@ export function CreateLinkModal({ open, onOpenChange }: CreateLinkModalProps) {
                     <>
                         <div className="flex-1 overflow-auto pr-2">
                             {isLoadingData || isValidating || isExecuting ? (
-                                <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
-                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                <div className="flex flex-col items-center justify-center gap-2 h-full border border-dashed rounded-lg bg-muted/10 p-8 min-h-[400px]">
+                                    <div className="relative flex items-center justify-center">
+                                        <Loader2 className="h-6 w-6 animate-spin" />
+                                    </div>
                                     <div className="text-center space-y-2">
                                         <p className="text-sm font-medium">
-                                            {isExecuting
-                                                ? "Processing changes..."
-                                                : (isLoadingData ? "Loading Zoom data..." : "Validating schedules...")}
+                                            {isExecuting ? "Processing changes..." : (isLoadingData ? "Loading Zoom data..." : "Validating schedules...")}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            {isExecuting
-                                                ? "Syncing with Zoom and updating records"
-                                                : (isLoadingData ? "Fetching meetings and users" : "Analyzing input data")}
+                                            {isExecuting ? "Syncing with Zoom and updating records" : (isLoadingData ? "Fetching meetings and users" : "Analyzing input data")}
                                         </p>
                                     </div>
                                 </div>

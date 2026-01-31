@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScheduleDataTable } from "@schedules/components/table/ScheduleDataTable";
 import { useZoomStore } from "@/features/matching/stores/useZoomStore";
@@ -152,15 +152,8 @@ const searchColumns: ColumnDef<MeetingRow>[] = [
 ];
 
 export function SearchLinkModal({ open, onOpenChange }: SearchLinkModalProps) {
-    const { meetings, users, isLoadingData, isInitialized, fetchZoomData } = useZoomStore();
+    const { meetings, users, isLoadingData, fetchZoomData } = useZoomStore();
     const [isRefreshing, setIsRefreshing] = useState(false);
-
-    // Cargar datos si no están inicializados
-    useEffect(() => {
-        if (open && !isInitialized && !isLoadingData) {
-            fetchZoomData();
-        }
-    }, [open, isInitialized, isLoadingData, fetchZoomData]);
 
     // Crear mapa de usuarios para lookup rápido
     const userMap = useMemo(() => {
@@ -211,8 +204,10 @@ export function SearchLinkModal({ open, onOpenChange }: SearchLinkModalProps) {
 
                 <div className="flex-1 overflow-auto pr-2">
                     {isLoading ? (
-                        <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <div className="flex flex-col items-center justify-center gap-2 h-full border border-dashed rounded-lg bg-muted/10 p-8 min-h-[400px]">
+                            <div className="relative flex items-center justify-center">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
                             <div className="text-center space-y-2">
                                 <p className="text-sm font-medium">Loading meetings...</p>
                                 <p className="text-xs text-muted-foreground">

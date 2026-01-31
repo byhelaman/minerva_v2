@@ -39,8 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-
-const CACHE_FILE_NAME = "linked_source_cache.json";
+import { STORAGE_FILES } from "@/lib/constants";
 
 interface MicrosoftAccount {
     email: string;
@@ -198,8 +197,8 @@ export function MicrosoftIntegration({ onConfigChange }: MicrosoftIntegrationPro
 
             // Clear Cache
             try {
-                if (await exists(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData })) {
-                    await remove(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData });
+                if (await exists(STORAGE_FILES.EXCEL_DATA_MIRROR, { baseDir: BaseDirectory.AppLocalData })) {
+                    await remove(STORAGE_FILES.EXCEL_DATA_MIRROR, { baseDir: BaseDirectory.AppLocalData });
                 }
             } catch (ignore) { console.error("Failed to clear cache", ignore); }
 
@@ -240,8 +239,8 @@ export function MicrosoftIntegration({ onConfigChange }: MicrosoftIntegrationPro
 
             // Clear Cache on Config Change to prevent showing stale data from previous file
             try {
-                if (await exists(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData })) {
-                    await remove(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData });
+                if (await exists(STORAGE_FILES.EXCEL_DATA_MIRROR, { baseDir: BaseDirectory.AppLocalData })) {
+                    await remove(STORAGE_FILES.EXCEL_DATA_MIRROR, { baseDir: BaseDirectory.AppLocalData });
                 }
             } catch (ignore) { console.error("Failed to clear cache", ignore); }
 

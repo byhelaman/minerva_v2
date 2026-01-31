@@ -99,7 +99,6 @@ interface DataTableToolbarProps<TData> {
     onPublish?: () => void;
     isPublishing?: boolean;
     canPublish?: boolean;
-    isRefreshing?: boolean;
 }
 
 export function DataTableToolbar<TData>({
@@ -123,7 +122,6 @@ export function DataTableToolbar<TData>({
     onPublish,
     isPublishing = false,
     canPublish = false,
-    isRefreshing = false,
 }: DataTableToolbarProps<TData>) {
     const isFiltered =
         table.getState().columnFilters.length > 0 ||
@@ -406,7 +404,7 @@ export function DataTableToolbar<TData>({
                             onClick={onRefresh}
                             disabled={disableRefresh}
                         >
-                            <RefreshCw className={cn(isRefreshing && "animate-spin")} />
+                            <RefreshCw />
                         </Button>
                     )}
                     {!hideActions && (

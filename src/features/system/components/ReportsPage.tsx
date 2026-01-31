@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ScheduleDataTable } from "@/features/schedules/components/table/ScheduleDataTable";
 import { getDataSourceColumns } from "./data-source-columns";
 import { DataTableColumnHeader } from "@/features/schedules/components/table/data-table-column-header";
-import { type ColumnDef, type Column, type Row } from "@tanstack/react-table";
+import { type ColumnDef } from "@tanstack/react-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ReportRowActions } from "./ReportRowActions";
 
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLinkedSourceSync } from "../hooks/useLinkedSourceSync";
+import { STORAGE_KEYS } from "@/lib/constants";
 
 // Interfaces
 interface WorkbookItem {
@@ -35,89 +36,139 @@ interface ExcelDataRow {
     [key: string]: any;
 }
 
-// Helper: Matching de columnas con esquema predefinido
+// Helper: Matching de columnas con esquema predefinido (ESTRICTO)
 const findMatchingColumn = (header: string, predefinedColumns: any[]) => {
     const h = header.toLowerCase().trim();
-    // 1. Exact match
-    const exact = predefinedColumns.find((col: any) => (col.accessorKey || col.id) === h);
-    if (exact) return exact;
-    // 2. Partial match with rules
-    return predefinedColumns.find((col: any) => {
-        const key = (col.accessorKey || col.id) as string;
-        if (!key) return false;
-        if (key === "date" && h.includes("date")) return true;
-        if (key === "branch" && h.includes("branch")) return true;
-        if (key === "instructor" && h.includes("instructor")) return true;
-        if (key === "program" && h.includes("program")) return true;
-        if (key === "minutes" && h.includes("mins")) return true;
-        if (key === "units" && h.includes("units")) return true;
-        if (key === "type" && h.includes("subtype")) return false;
-        return h.includes(key.toLowerCase());
-    });
+    // Solo coincidencia exacta por ID o accessorKey
+    return predefinedColumns.find((col: any) => (col.accessorKey || col.id) === h);
 };
 
 export function ReportsPage() {
     // Estado
-    const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
-    const [sheets, setSheets] = useState<WorkbookItem[]>([]);
+    // Inicialización perezosa: Intentar recuperar configuración de LocalStorage inmediatamente
+    const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(() => {
+        const stored = localStorage.getItem(STORAGE_KEYS.CONNECTION_CONFIG);
+        return stored ? JSON.parse(stored) : null;
+    });
+
+    // Inicializar hojas desde localStorage para evitar esqueletos
+    const [sheets, setSheets] = useState<WorkbookItem[]>(() => {
+        if (!selectedFile?.id) return [];
+        const stored = localStorage.getItem(`${STORAGE_KEYS.UI_SHEETS_CACHE_PREFIX}${selectedFile.id}`);
+        return stored ? JSON.parse(stored) : [];
+    });
+
     const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
 
     const [isLoadingSheets, setIsLoadingSheets] = useState(false);
     const [isLoadingData, setIsLoadingData] = useState(false);
-    const [isLoadingFile, setIsLoadingFile] = useState(true);
+    // Si ya tenemos archivo por localStorage, no bloqueamos la UI con carga inicial
+    const [isLoadingFile, setIsLoadingFile] = useState(!selectedFile);
 
-    const { cachedData, isSyncing: isSyncingBackground, isRestoringCache, fileName: cachedFileName, fileId: cachedFileId, sync } = useLinkedSourceSync();
+    const { cachedData, cachedSheets, isSyncing: isSyncingBackground, isRestoringCache, fileName: cachedFileName, fileId: cachedFileId, sync } = useLinkedSourceSync();
 
     const [tableData, setTableData] = useState<ExcelDataRow[]>([]);
     const [tableColumns, setTableColumns] = useState<any[]>([]);
     const [formatError, setFormatError] = useState<string | null>(null);
 
-    // Carga Inicial: Intentar desde caché primero
+    // Carga Inicial: Intentar desde caché primero (Backup si localStorage falla pero hook tiene datos)
     useEffect(() => {
         if (cachedData) {
             // Soporte para caché legado (array) y nuevo (objeto multi-hoja)
             // Si hay info del archivo en caché, poblarla para mostrar cabecera
+            // Si hay info del archivo en caché, poblarla para mostrar cabecera
             if (cachedFileId && cachedFileName) {
-                setSelectedFile({ id: cachedFileId, name: cachedFileName });
+                // Si no hay archivo seleccionado O hay desincronización (caché tiene prioridad)
+                if (!selectedFile || selectedFile.id !== cachedFileId) {
+                    setSelectedFile({ id: cachedFileId, name: cachedFileName });
+                }
             }
         }
-    }, [cachedData, cachedFileId, cachedFileName]);
-
-    const processData = (data: any[]) => {
-        if (!data || data.length === 0) {
-            setTableData([]);
-            setTableColumns([]);
-            return;
+        if (cachedSheets && cachedSheets.length > 0) {
+            setSheets(cachedSheets);
+            // Actualizar localStorage con lo que venga del caché (file system > local storage visual)
+            if (cachedFileId) {
+                localStorage.setItem(`${STORAGE_KEYS.UI_SHEETS_CACHE_PREFIX}${cachedFileId}`, JSON.stringify(cachedSheets));
+            }
         }
+    }, [cachedData, cachedSheets, cachedFileId, cachedFileName, selectedFile]);
 
-        const sampleRow = data[0];
-        const headers = Object.keys(sampleRow).filter(k => k !== 'id');
+    // Auto-sincronización si no hay datos en caché y tenemos un archivo seleccionado
+    useEffect(() => {
+        // Solo intentar sincronizar si ya terminamos de mirar el disco y no encontramos nada,
+        // y tenemos un archivo configurado que deberíamos tener.
+        if (!isRestoringCache && selectedFile?.id && (!cachedData || (Array.isArray(cachedData) && cachedData.length === 0))) {
+            // Pequeño debounce o check extra para no spammear si hay error de sync
+            console.log("Cache empty, triggering auto-sync...");
+            sync();
+        }
+    }, [isRestoringCache, cachedData, selectedFile, sync]);
 
+    const validateAndProcessData = useCallback((headers: string[], dataRows: any[]) => {
         const predefinedColumns = getDataSourceColumns();
 
+        // VALIDACIÓN DE FORMATO
+        const REQUIRED_COLUMNS = [
+            "date", "shift", "branch", "start_time", "end_time", "code", "instructor",
+            "program", "minutes", "units", "status", "substitute", "type", "subtype",
+            "description", "department", "feedback"
+        ];
+
+        // Filtrar encabezados vacíos
+        const validHeaders = headers
+            .map((header, index) => ({ header, index }))
+            .filter(h => h.header.trim() !== "");
+
+        const detectedKeys = validHeaders.map(({ header }) => {
+            const match = findMatchingColumn(header, predefinedColumns);
+            return match ? (match as any).accessorKey || match.id : null;
+        }).filter(Boolean);
+
+        // Generar Columnas
         const headerKeyMap: Record<string, string> = {};
+        const isCrowded = validHeaders.length >= 8;
 
-        const dynamicColumns: ColumnDef<ExcelDataRow>[] = headers.map((key) => {
-            const matchedCol = findMatchingColumn(key, predefinedColumns);
+        const dynamicColumns: ColumnDef<ExcelDataRow>[] = validHeaders.map(({ header }, index) => {
+            const matchedCol = findMatchingColumn(header, predefinedColumns);
+            const schemaKey = matchedCol ? ((matchedCol as any).accessorKey || matchedCol.id) as string : undefined;
+            const finalKey = schemaKey || header;
 
-            // Si coincide, usar la clave del esquema. Si no, usar la clave cruda.
-            const schemaKey = matchedCol ? ((matchedCol as any).accessorKey || matchedCol.id) as string : key;
-            headerKeyMap[key] = schemaKey;
+            headerKeyMap[header] = finalKey;
 
             if (matchedCol) {
-                return { ...matchedCol, id: schemaKey, accessorKey: schemaKey } as ColumnDef<ExcelDataRow>;
+                return { ...matchedCol, id: finalKey, accessorKey: finalKey } as ColumnDef<ExcelDataRow>;
             }
 
+            // Fallback styles
+            const isFirst = index === 0;
+            const shouldUseFixedWidth = isCrowded && isFirst;
+            const finalSize = shouldUseFixedWidth ? 120 : undefined;
+            const isCentered = shouldUseFixedWidth;
+
             return {
-                id: key,
-                accessorKey: key,
-                header: ({ column }) => <DataTableColumnHeader column={column} title={key} />,
-                cell: ({ row }) => <div className="truncate">{row.getValue(key)}</div>
+                id: header,
+                accessorKey: finalKey,
+                size: finalSize,
+                minSize: finalSize,
+                header: ({ column }) => <DataTableColumnHeader column={column} title={header} className={isCentered ? "justify-center" : ""} />,
+                cell: ({ row }) => <div className={isCentered ? "min-w-[100px] text-center" : "truncate"} title={String(row.getValue(finalKey))}>{row.getValue(finalKey)}</div>
             };
         });
 
-        // Remapear datos para usar claves del esquema
-        const cleanData = data.map(row => {
+        // Mapear Datos
+        const cleanData = dataRows.map((row: any) => {
+            // Si row es array (viene de Graph API)
+            if (Array.isArray(row)) {
+                const obj: any = {};
+                headers.forEach((originalHeader, index) => {
+                    const keyToUse = headerKeyMap[originalHeader];
+                    if (keyToUse) obj[keyToUse] = row[index];
+                });
+                if (!obj.id) obj.id = crypto.randomUUID();
+                return obj;
+            }
+
+            // Si row es objeto (viene de caché o procesado previo)
             const newRow: any = { id: row.id || crypto.randomUUID() };
             headers.forEach(originalKey => {
                 const newKey = headerKeyMap[originalKey] || originalKey;
@@ -126,10 +177,6 @@ export function ReportsPage() {
             return newRow;
         });
 
-        // Columna de Selección y Acciones (reutilizar estándar)
-        // ... (Omitido por brevedad, pero necesito incluirlos en el contenido de reemplazo)
-
-        // ... Re-declarando columnas estándar para inclusión en reemplazo ...
         const selectColumn: ColumnDef<ExcelDataRow> = {
             id: "select",
             size: 36,
@@ -166,12 +213,37 @@ export function ReportsPage() {
 
         setTableColumns([selectColumn, ...dynamicColumns, actionColumn]);
         setTableData(cleanData);
-    };
+
+        const missingColumns = REQUIRED_COLUMNS.filter(req => !detectedKeys.includes(req));
+        if (missingColumns.length > 0) {
+            setFormatError('The file does not contain the columns needed to generate the report.');
+            return false;
+        }
+
+        setFormatError(null);
+        return true;
+    }, []);
+
+    const processData = useCallback((data: any[]) => {
+        if (!data || data.length === 0) {
+            setTableData([]);
+            setTableColumns([]);
+            return;
+        }
+
+        const sampleRow = data[0];
+        const headers = Object.keys(sampleRow).filter(k => k !== 'id');
+        validateAndProcessData(headers, data);
+    }, [validateAndProcessData]);
 
     // Carga Inicial: Verificar archivo persistido
     useEffect(() => {
         const fetchConfig = async () => {
-            setIsLoadingFile(true);
+            // Solo mostrar carga si NO tenemos un archivo ya seleccionado (optimista)
+            if (!selectedFile) {
+                setIsLoadingFile(true);
+            }
+
             try {
                 const { data, error } = await supabase.functions.invoke('microsoft-auth', {
                     body: { action: 'status' },
@@ -179,15 +251,20 @@ export function ReportsPage() {
                 });
 
                 if (!error && data?.connected && data?.account?.incidences_file?.id) {
-                    setSelectedFile({
+                    const newConfig = {
                         id: data.account.incidences_file.id,
                         name: data.account.incidences_file.name || 'Linked File'
-                    });
+                    };
+
+                    // Actualizar estado y persistir
+                    setSelectedFile(newConfig);
+                    localStorage.setItem(STORAGE_KEYS.CONNECTION_CONFIG, JSON.stringify(newConfig));
                 } else {
                     setSelectedFile(null);
+                    localStorage.removeItem(STORAGE_KEYS.CONNECTION_CONFIG);
                 }
             } catch (error) {
-                setSelectedFile(null);
+                // setSelectedFile(null); // Keep handling offline tolerance
                 console.error("Failed to load config", error);
             } finally {
                 setIsLoadingFile(false);
@@ -208,11 +285,11 @@ export function ReportsPage() {
             // ... lógica de obtención existente ...
             // Podemos seguir obteniendo hojas en segundo plano para poblar la barra lateral,
             // pero la tabla ya debería mostrar datos en caché.
-
-            // Mantener lógica no relacionada sin cambios por ahora, enfocarse en consumo de datos.
-
             try {
-                setIsLoadingSheets(true);
+                // Solo mostrar carga si no tenemos hojas y no estamos tirando de cache
+                if (sheets.length === 0 && (!cachedSheets || cachedSheets.length === 0)) {
+                    setIsLoadingSheets(true);
+                }
                 const { data, error } = await supabase.functions.invoke('microsoft-graph', {
                     body: {
                         action: 'list-content',
@@ -225,13 +302,28 @@ export function ReportsPage() {
 
                 const items = data.value as WorkbookItem[];
                 setSheets(items);
+                // Persistir hojas actualizadas
+                localStorage.setItem(`${STORAGE_KEYS.UI_SHEETS_CACHE_PREFIX}${selectedFile.id}`, JSON.stringify(items));
 
-                // Seleccionar tabla/hoja por defecto si no hay selección
-                const firstTable = items.find(i => i.type === 'table');
-                if (firstTable) {
-                    setSelectedSheet(firstTable.id);
-                } else if (items.length > 0) {
-                    setSelectedSheet(null);
+
+                // Validar la selección actual o aplicar fallback
+                // Si ya tenemos una hoja seleccionada (optimista), verificar que exista en la nueva lista
+                if (selectedSheet) {
+                    const exists = items.some(i => i.id === selectedSheet);
+                    if (!exists) {
+                        // Si la hoja seleccionada optimísticamente no existe en realidad, reiniciar
+                        applyFallbackSelection(items);
+                    }
+                } else {
+                    // Si no hay selección, intentar recuperar de storage o aplicar fallback
+                    const storedSheetId = localStorage.getItem(`${STORAGE_KEYS.UI_LAST_VIEWED_SHEET_PREFIX}${selectedFile.id}`);
+                    const storedItem = items.find(i => i.id === storedSheetId);
+
+                    if (storedItem) {
+                        setSelectedSheet(storedItem.id);
+                    } else {
+                        applyFallbackSelection(items);
+                    }
                 }
 
             } catch (error) {
@@ -246,27 +338,46 @@ export function ReportsPage() {
             }
         };
 
+        const applyFallbackSelection = (items: WorkbookItem[]) => {
+            const firstTable = items.find(i => i.type === 'table');
+            if (firstTable) {
+                setSelectedSheet(firstTable.id);
+            } else if (items.length > 0) {
+                setSelectedSheet(null);
+            }
+        };
+
         fetchSheets();
-    }, [selectedFile, cachedData]); // ¿Se agregó cachedData a dependencias? No.
+    }, [selectedFile, cachedData, cachedSheets]); // ¿Se agregó cachedData a dependencias? No.
+
+    // Selección Optimista: Intentar establecer hoja desde LocalStorage o Caché inmediatamente
+    useEffect(() => {
+        if (selectedFile?.id && !selectedSheet) {
+            // 1. Intentar LocalStorage
+            const stored = localStorage.getItem(`${STORAGE_KEYS.UI_LAST_VIEWED_SHEET_PREFIX}${selectedFile.id}`);
+            if (stored) {
+                setSelectedSheet(stored);
+                return;
+            }
+
+            // 2. Intentar inferir de CachedData (si es estructura nueva)
+            if (cachedData && !Array.isArray(cachedData)) {
+                const keys = Object.keys(cachedData);
+                if (keys.length > 0) {
+                    setSelectedSheet(keys[0]);
+                }
+            }
+        }
+    }, [selectedFile, cachedData, selectedSheet]);
+
+    // Persistir selección de hoja
+    useEffect(() => {
+        if (selectedFile?.id && selectedSheet) {
+            localStorage.setItem(`${STORAGE_KEYS.UI_LAST_VIEWED_SHEET_PREFIX}${selectedFile.id}`, selectedSheet);
+        }
+    }, [selectedFile, selectedSheet]);
 
     const fetchData = useCallback(async () => {
-        // Esta función obtiene datos en vivo.
-        // Si se llama manualmente (actualizar) -> Hacer fetch.
-        // Al montar/cambiar hoja -> ¿Verificar si debemos hacer fetch o usar caché?
-
-        // Si tenemos datos en caché y son suficientemente frescos (o simplemente existen), ¿quizás no auto-fetch datos en vivo?
-        // El usuario pidió "leer del archivo cargado en segundo plano".
-        // Así que `fetchData` debería probablemente ser reemplazado o aumentado por `loadFromCache`.
-
-        // ¿Hacer que `fetchData` realmente dispare la Sincronización en Segundo Plano en lugar de fetch directo?
-        // ¿O fetch directo como "Forzar Actualización"?
-
-        // Estrategia:
-        // 1. App carga -> Sync Segundo Plano corre -> Caché actualiza -> `cachedData` actualiza -> `processData` corre -> Tabla actualiza.
-        // 2. DataSourcesPage monta -> ve `cachedData` -> lo muestra.
-        // 3. `fetchData` (En Vivo) es ahora opcional.
-
-        // Deberíamos deshabilitar el auto-fetch en `useEffect` si tenemos caché.
 
         if (cachedData) {
             let hit = null;
@@ -287,6 +398,12 @@ export function ReportsPage() {
         if (!selectedFile?.id || !selectedSheet) {
             setTableData([]);
             setTableColumns([]);
+            return;
+        }
+
+        // Si aún no tenemos la lista de hojas (metadatos), no podemos saber si llamar a /table o /sheet.
+        // Esperamos a que 'sheets' se cargue (lo cual disparará este efecto nuevamente).
+        if (sheets.length === 0) {
             return;
         }
 
@@ -327,151 +444,9 @@ export function ReportsPage() {
             const headers = rawRows[0].map((h: any) => String(h || ""));
             const dataRows = rawRows.slice(1);
 
-            // Filtrar encabezados vacíos y mantener seguimiento del índice original
-            const validHeaders = headers
-                .map((header: string, index: number) => ({ header, index }))
-                .filter((h: { header: string, index: number }) => h.header.trim() !== "");
+            // Usar la función de validación unificada
+            validateAndProcessData(headers, dataRows);
 
-            const isCrowded = validHeaders.length >= 8;
-
-            // Generar columnas dinámicas basadas en encabezados válidos
-            const predefinedColumns = getDataSourceColumns();
-            // Inicializar mapa para almacenar mapeo Encabezado -> Clave de Esquema
-            const headerKeyMap: Record<string, string> = {};
-
-
-            // VALIDACIÓN DE FORMATO
-            const REQUIRED_COLUMNS = [
-                "date", "shift", "branch", "start_time", "end_time", "code", "instructor",
-                "program", "minutes", "units", "status", "substitute", "type", "subtype",
-                "description", "department", "feedback"
-            ];
-
-            const detectedKeys = validHeaders.map(({ header }: { header: string }) => {
-                const match = findMatchingColumn(header, predefinedColumns);
-                return match ? (match as any).accessorKey || match.id : null;
-            }).filter(Boolean);
-
-            const missingColumns = REQUIRED_COLUMNS.filter(req => !detectedKeys.includes(req));
-
-            if (missingColumns.length > 0) {
-                setFormatError('The file does not have the required format.');
-                setTableData([]);
-                setTableColumns([]);
-                setIsLoadingData(false);
-                return;
-            } else {
-                setFormatError(null);
-            }
-
-            const dynamicColumns: ColumnDef<ExcelDataRow>[] = validHeaders.map(({ header }: { header: string }, index: number) => {
-                const matchedCol = findMatchingColumn(header, predefinedColumns);
-
-                // Determinar la clave para mapeo de datos (Clave de Esquema si coincide, sino encabezado)
-                const schemaKey = matchedCol ? ((matchedCol as any).accessorKey || matchedCol.id) as string : undefined;
-                const finalKey = schemaKey || header;
-
-                // LLENAR EL MAPA
-                headerKeyMap[header] = finalKey;
-
-                // Si encontramos coincidencia en el esquema, usar su definición directamente
-                if (matchedCol) {
-                    return {
-                        ...matchedCol,
-                        id: finalKey,
-                        accessorKey: finalKey,
-                    } as ColumnDef<ExcelDataRow>;
-                }
-
-                // Fallback para columnas no coincidentes
-                // Determinar estilos solo para columnas desconocidas (ej. primera columna fija si está llena)
-                const isFirst = index === 0;
-                const shouldUseFixedWidth = isCrowded && isFirst;
-                const finalSize = shouldUseFixedWidth ? 120 : undefined;
-                const isCentered = shouldUseFixedWidth;
-
-                return {
-                    id: header,
-                    accessorKey: finalKey,
-                    size: finalSize,
-                    minSize: finalSize,
-                    header: ({ column }: { column: Column<ExcelDataRow> }) => (
-                        <DataTableColumnHeader
-                            column={column}
-                            title={header}
-                            className={isCentered ? "justify-center" : ""}
-                        />
-                    ),
-                    cell: ({ row }: { row: Row<ExcelDataRow> }) => (
-                        <div
-                            className={isCentered ? "min-w-[100px] text-center" : "truncate"}
-                            title={String(row.getValue(finalKey))}
-                        >
-                            {row.getValue(finalKey)}
-                        </div>
-                    ),
-                };
-            });
-
-            // Transformar filas a objetos usando encabezados válidos
-            const mappedData = dataRows.map((row: any[]) => {
-                const obj: any = {};
-                // headers es el array original incluyendo vacíos, pero solo nos importa el mapeo de validHeaders
-                // Debemos iterar encabezados originales para coincidir con índice de fila
-                headers.forEach((originalHeader: string, index: number) => {
-                    // Usar el mapa para obtener la clave correcta (ej. 'instructor' en lugar de 'Instructor')
-                    const keyToUse = headerKeyMap[originalHeader];
-                    if (keyToUse) {
-                        obj[keyToUse] = row[index];
-                    }
-                });
-
-                // Fallbacks/Valores por defecto para claves estándar faltantes para evitar errores de tabla
-                if (!obj.id) obj.id = crypto.randomUUID();
-                return obj;
-            });
-
-            // Columna de Selección Estándar
-            const selectColumn: ColumnDef<ExcelDataRow> = {
-                id: "select",
-                size: 36,
-                header: ({ table }) => (
-                    <div className="flex justify-center items-center mb-1">
-                        <Checkbox
-                            checked={
-                                table.getIsAllPageRowsSelected() ||
-                                (table.getIsSomePageRowsSelected() && "indeterminate")
-                            }
-                            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-                            aria-label="Select all"
-                            className="translate-y-[2px]"
-                        />
-                    </div>
-                ),
-                cell: ({ row }) => (
-                    <div className="flex justify-center">
-                        <Checkbox
-                            checked={row.getIsSelected()}
-                            onCheckedChange={(value) => row.toggleSelected(!!value)}
-                            aria-label="Select row"
-                            className="translate-y-[2px] mb-1"
-                        />
-                    </div>
-                ),
-                enableSorting: false,
-                enableHiding: false,
-            };
-
-            // Columna de Acciones Estándar
-            const actionColumn: ColumnDef<ExcelDataRow> = {
-                id: "actions",
-                size: 50,
-                cell: ({ row }) => <ReportRowActions row={row} />,
-                enableHiding: false,
-            };
-
-            setTableColumns([selectColumn, ...dynamicColumns, actionColumn]);
-            setTableData(mappedData);
 
         } catch (error) {
             console.error("Failed to fetch data", error);
@@ -479,15 +454,21 @@ export function ReportsPage() {
         } finally {
             setIsLoadingData(false);
         }
-    }, [selectedFile, selectedSheet, sheets]);
+    }, [selectedFile, selectedSheet, sheets, cachedData, processData, validateAndProcessData]);
 
     // Obtener Datos cuando cambia la Hoja
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    // Estado de carga global - Solo bloqueante si NO tenemos datos mostrandose
-    const isLoading = (isLoadingFile || (selectedFile && (isLoadingSheets || isLoadingData))) && tableData.length === 0;
+    // Estado de carga global
+    // 1. Bootstrapping: Bloquear solo si no tenemos datos mostrados (para evitar pantallazo de carga si hay caché)
+    const isBootstrapping = (isLoadingFile || isRestoringCache) && tableData.length === 0;
+    // 2. Acciones explícitas: Bloquear siempre para dar feedback (Sync manual, cambio de hoja)
+    // NOTA: Incluimos isLoadingSheets solo si la tabla está vacía para evitar flash de carga si ya tenemos caché
+    const isWorking = isSyncingBackground || (selectedFile && (isLoadingData || (isLoadingSheets && sheets.length === 0)));
+
+    const isLoading = isBootstrapping || isWorking;
 
     // Empty state solo si no estamos restaurando cache, no está cargando archivo, y no hay archivo ni datos
     const showEmptyState = !isLoadingFile && !selectedFile && !isRestoringCache && tableData.length === 0;
@@ -543,7 +524,8 @@ export function ReportsPage() {
                     {/* Sidebar */}
                     <aside className="hidden md:flex flex-col gap-1 flex-none p-1">
                         <h3 className="text-sm font-medium text-muted-foreground px-2 mb-2">Worksheets</h3>
-                        {isLoadingSheets || isLoadingFile ? (
+                        {/* Solo mostrar esqueletos si estamos cargando Y no hay hojas para mostrar */}
+                        {(isLoadingSheets || isLoadingFile) && sheets.length === 0 ? (
                             Array.from({ length: 4 }).map((_, i) => (
                                 <Skeleton key={i} className="h-9 w-full" />
                             ))
@@ -573,7 +555,8 @@ export function ReportsPage() {
                         <div className="flex items-center justify-between pb-4 flex-none">
                             <div className="flex items-center justify-between mb-0">
                                 <div>
-                                    {isLoadingSheets || isLoadingFile || !selectedSheet ? (
+                                    {/* Mostrar título si tenemos hoja seleccionada, aunque estemos validando archivo */}
+                                    {((isLoadingSheets || isLoadingFile) && !selectedSheet) ? (
                                         <div className="flex flex-col gap-2">
                                             <Skeleton className="h-7 w-48" />
                                             <div className="flex items-center gap-2">
@@ -587,6 +570,7 @@ export function ReportsPage() {
                                             <h2 className="text-lg font-semibold tracking-tight">
                                                 {sheets.find(s => s.id === selectedSheet)?.name || 'Sheet'}
                                             </h2>
+                                            {/* Header Content */}
                                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                 <span className="capitalize">Sheet Preview</span>
                                                 <span>•</span>
@@ -619,17 +603,18 @@ export function ReportsPage() {
                             {isLoading ? (
                                 <div className="flex flex-col items-center justify-center gap-2 h-full border border-dashed rounded-lg bg-muted/10 p-8 min-h-[400px]">
                                     <div className="relative flex items-center justify-center">
-                                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                                        <Loader2 className="h-6 w-6 animate-spin" />
                                     </div>
-                                    <div className="flex flex-col items-center gap-1">
-                                        <span className="font-medium text-foreground text-sm">
-                                            {isLoadingFile && "Connecting to Microsoft..."}
-                                            {!isLoadingFile && isLoadingSheets && "Loading worksheets..."}
-                                            {!isLoadingFile && !isLoadingSheets && isLoadingData && "Downloading data..."}
-                                        </span>
-                                        <span className="text-muted-foreground text-xs text-center max-w-[300px]">
-                                            {isLoadingData && "Reading data may take a few seconds."}
-                                        </span>
+                                    <div className="text-center space-y-2">
+                                        <p className="text-sm font-medium">
+                                            {isSyncingBackground ? "Updating reports..." : (isLoadingFile ? "Connecting to Microsoft..." : (isLoadingSheets ? "Loading worksheets..." : "Downloading data..."))}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {isSyncingBackground
+                                                ? "Syncing data with Microsoft Excel"
+                                                : (isLoadingData ? "Reading data may take a few seconds." : "Please wait while we fetch the latest info")
+                                            }
+                                        </p>
                                     </div>
                                 </div>
                             ) : formatError ? (
@@ -643,6 +628,14 @@ export function ReportsPage() {
                                             {formatError}
                                         </div>
                                     </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setFormatError(null)}
+                                        className="mt-2"
+                                    >
+                                        Load anyway
+                                    </Button>
                                 </div>
                             ) : (
                                 <div className="flex-1 overflow-auto">
@@ -669,7 +662,6 @@ export function ReportsPage() {
                                         initialPageSize={100}
                                         onRefresh={() => sync()}
                                         disableRefresh={isSyncingBackground}
-                                        isRefreshing={isSyncingBackground}
                                     />
                                 </div>
                             )}

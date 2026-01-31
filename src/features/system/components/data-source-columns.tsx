@@ -41,11 +41,7 @@ export const getDataSourceColumns = (onDelete?: (s: Schedule) => void): ColumnDe
             <DataTableColumnHeader column={column} title="date" className="justify-center" />
         ),
         cell: ({ row }) => <div className="w-[100px] text-center">
-            {new Date(row.getValue("date")).toLocaleDateString("es-PE", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-            })}
+            {row.getValue("date")}
         </div>,
     },
     {

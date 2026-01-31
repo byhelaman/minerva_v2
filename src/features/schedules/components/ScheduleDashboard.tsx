@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/components/settings-provider";
 import { RequirePermission } from "@/components/RequirePermission";
-import { AUTOSAVE_FILENAME, AUTOSAVE_DEBOUNCE_MS, INCIDENCES_FILENAME } from "@/lib/constants";
+import { AUTOSAVE_DEBOUNCE_MS, STORAGE_FILES } from "@/lib/constants";
 import { Bot, CalendarPlus, CalendarSearch } from "lucide-react";
 import { SearchLinkModal } from "./modals/SearchLinkModal";
 import { CreateLinkModal } from "./modals/CreateLinkModal";
@@ -47,7 +47,7 @@ export function ScheduleDashboard() {
     const autoSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const incidencesSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { settings } = useSettings();
-    const { fetchZoomData, isInitialized, meetings, users, fetchActiveMeetings, isLoadingData } = useZoomStore();
+    const { meetings, users, fetchActiveMeetings, isLoadingData } = useZoomStore();
 
     // Live Mode state
     const [showLiveMode, setShowLiveMode] = useState(false);
@@ -61,13 +61,6 @@ export function ScheduleDashboard() {
         refreshMsConfig();
     }, []);
 
-    // Pre-load Zoom data in background on mount
-    useEffect(() => {
-        if (!isInitialized) {
-            fetchZoomData();
-        }
-    }, [isInitialized, fetchZoomData]);
-
     // Auto-load on mount
     useEffect(() => {
         if (hasLoadedAutosave.current) return;
@@ -76,9 +69,9 @@ export function ScheduleDashboard() {
         const loadAutosave = async () => {
             try {
                 // Load Base Schedules
-                const schedExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                const schedExists = await exists(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
                 if (schedExists) {
-                    const content = await readTextFile(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                    const content = await readTextFile(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
                     const parsedData = JSON.parse(content);
                     if (Array.isArray(parsedData) && parsedData.length > 0) {
                         setBaseSchedules(parsedData);
@@ -90,9 +83,9 @@ export function ScheduleDashboard() {
                 }
 
                 // Load Incidences
-                const incExists = await exists(INCIDENCES_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                const incExists = await exists(STORAGE_FILES.INCIDENCES_LOG, { baseDir: BaseDirectory.AppLocalData });
                 if (incExists) {
-                    const content = await readTextFile(INCIDENCES_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                    const content = await readTextFile(STORAGE_FILES.INCIDENCES_LOG, { baseDir: BaseDirectory.AppLocalData });
                     const parsedData = JSON.parse(content);
                     if (Array.isArray(parsedData)) {
                         setIncidences(parsedData);
@@ -121,13 +114,13 @@ export function ScheduleDashboard() {
         autoSaveTimeout.current = setTimeout(async () => {
             try {
                 if (baseSchedules.length > 0) {
-                    await writeTextFile(AUTOSAVE_FILENAME, JSON.stringify(baseSchedules, null, 2), {
+                    await writeTextFile(STORAGE_FILES.SCHEDULES_DRAFT, JSON.stringify(baseSchedules, null, 2), {
                         baseDir: BaseDirectory.AppLocalData,
                     });
                 } else {
-                    const fileExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                    const fileExists = await exists(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
                     if (fileExists) {
-                        await remove(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                        await remove(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
                     }
                 }
             } catch (error) {
@@ -159,7 +152,7 @@ export function ScheduleDashboard() {
 
         incidencesSaveTimeout.current = setTimeout(async () => {
             try {
-                await writeTextFile(INCIDENCES_FILENAME, JSON.stringify(incidences, null, 2), {
+                await writeTextFile(STORAGE_FILES.INCIDENCES_LOG, JSON.stringify(incidences, null, 2), {
                     baseDir: BaseDirectory.AppLocalData,
                 });
             } catch (error) {
@@ -292,9 +285,9 @@ export function ScheduleDashboard() {
             setBaseSchedules([]);
             setActiveDate(null); // Reset active date
             useZoomStore.setState({ matchResults: [] });
-            const fileExists = await exists(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+            const fileExists = await exists(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
             if (fileExists) {
-                await remove(AUTOSAVE_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                await remove(STORAGE_FILES.SCHEDULES_DRAFT, { baseDir: BaseDirectory.AppLocalData });
             }
             toast.success("Schedule cleared");
         } catch (error) {

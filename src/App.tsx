@@ -1,5 +1,5 @@
 import { Routes, Route, Outlet } from "react-router-dom";
-import { useEffect } from "react";
+
 import { MainNav } from "@/components/main-nav";
 import { UserNav } from "@/components/user-nav";
 import { ScheduleDashboard } from "@/features/schedules/components/ScheduleDashboard";
@@ -11,27 +11,10 @@ import { ReportsPage } from "@/features/system/components/ReportsPage";
 import { LoginPage } from "@/features/auth/components/LoginPage";
 
 import { ProtectedRoute, AdminRoute } from "@/components/ProtectedRoute";
-import { useSettings } from "@/components/settings-provider";
-import { useTheme } from "@/components/theme-provider";
-
-// Sincroniza el tema desde el archivo de configuración al ThemeProvider al cargar la app
-function ThemeSyncer() {
-  const { settings, isLoading } = useSettings();
-  const { setTheme } = useTheme();
-
-  useEffect(() => {
-    if (!isLoading && settings.theme) {
-      setTheme(settings.theme);
-    }
-  }, [isLoading, settings.theme, setTheme]);
-
-  return null;
-}
 
 function Layout() {
   return (
     <div className="flex flex-col min-h-screen gap-6 p-5">
-      <ThemeSyncer />
       <div className="flex pr-3">
         <MainNav />
         <div className="ml-auto flex items-center space-x-4">
@@ -45,14 +28,12 @@ function Layout() {
   );
 }
 
-
-import { BackgroundSyncer } from "@/features/system/components/BackgroundSyncer";
 import { UpdateDialog } from "@/components/update-dialog";
+import { GlobalSyncManager } from "@/features/system/components/GlobalSyncManager";
 
 function App() {
   return (
     <>
-      <BackgroundSyncer />
       <UpdateDialog />
       <Routes>
         {/* Ruta pública - Login (signup se hace desde el dialog) */}
@@ -62,6 +43,7 @@ function App() {
         <Route
           element={
             <ProtectedRoute>
+              <GlobalSyncManager />
               <Layout />
             </ProtectedRoute>
           }

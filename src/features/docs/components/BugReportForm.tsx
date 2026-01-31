@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/popover"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
+import { STORAGE_KEYS } from "@/lib/constants"
 
 // Función helper para contar palabras
 const countWords = (text: string): number => {
@@ -59,7 +60,6 @@ const formSchema = z.object({
         .refine(maxWords(200), "Description must be at most 200 words."),
 })
 
-const RATE_LIMIT_KEY = 'bug_report_cooldown'
 const COOLDOWN_MS = 30000 // 30 segundos
 
 export function BugReportButton() {
@@ -69,23 +69,23 @@ export function BugReportButton() {
 
     // Limpiar cooldown expirado de localStorage al montar
     React.useEffect(() => {
-        const stored = localStorage.getItem(RATE_LIMIT_KEY)
+        const stored = localStorage.getItem(STORAGE_KEYS.RATE_LIMIT)
         if (stored) {
             const expiry = parseInt(stored, 10)
             if (Date.now() >= expiry) {
-                localStorage.removeItem(RATE_LIMIT_KEY)
+                localStorage.removeItem(STORAGE_KEYS.RATE_LIMIT)
             }
         }
     }, [])
 
     // Verificar rate limit (calculado al momento de usar, no cada render)
     const checkRateLimit = (): { allowed: boolean; secondsRemaining: number } => {
-        const stored = localStorage.getItem(RATE_LIMIT_KEY)
+        const stored = localStorage.getItem(STORAGE_KEYS.RATE_LIMIT)
         if (!stored) return { allowed: true, secondsRemaining: 0 }
 
         const expiry = parseInt(stored, 10)
         if (Date.now() >= expiry) {
-            localStorage.removeItem(RATE_LIMIT_KEY)
+            localStorage.removeItem(STORAGE_KEYS.RATE_LIMIT)
             return { allowed: true, secondsRemaining: 0 }
         }
 
@@ -131,7 +131,7 @@ export function BugReportButton() {
             setOpen(false)
 
             // Aplicar cooldown persistente en localStorage
-            localStorage.setItem(RATE_LIMIT_KEY, (Date.now() + COOLDOWN_MS).toString())
+            localStorage.setItem(STORAGE_KEYS.RATE_LIMIT, (Date.now() + COOLDOWN_MS).toString())
         } catch (error) {
             console.error("Error submitting bug report:", error)
             toast.error("Failed to submit bug report", {

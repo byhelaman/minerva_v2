@@ -21,7 +21,7 @@ interface AssignLinkModalProps {
 }
 
 export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkModalProps) {
-    const { fetchZoomData, runMatching, matchResults, meetings, isLoadingData, isInitialized, executeAssignments, isExecuting } = useZoomStore();
+    const { fetchZoomData, runMatching, matchResults, meetings, isLoadingData, executeAssignments, isExecuting } = useZoomStore();
     const instructorsList = useInstructors();
     const [isMatching, setIsMatching] = useState(false);
     const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
@@ -41,15 +41,6 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
     const getRowId = (schedule: Schedule): string => {
         return `${schedule.date}-${schedule.start_time}-${schedule.program}-${schedule.instructor}`;
     };
-
-    // 1. Cargar datos de Zoom al abrir
-    useEffect(() => {
-        if (open) {
-            if (!isInitialized && !isLoadingData) {
-                fetchZoomData();
-            }
-        }
-    }, [open, isInitialized, isLoadingData, fetchZoomData]);
 
     // 2. Ejecutar Matching cuando se abre el modal o cambian los horarios
     // Solo si ya tenemos meetings cargados
@@ -344,22 +335,24 @@ export function AssignLinkModal({ open, onOpenChange, schedules }: AssignLinkMod
 
                 <div className="flex-1 pr-2 overflow-auto">
                     {isLoadingData || isMatching ? (
-                        <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <div className="flex flex-col items-center justify-center gap-2 h-full border border-dashed rounded-lg bg-muted/10 p-8 min-h-[400px]">
+                            <div className="relative flex items-center justify-center">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
                             <div className="text-center space-y-2">
                                 <p className="text-sm font-medium">
                                     {isLoadingData ? "Loading Zoom data..." : "Matching schedules..."}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    {isLoadingData
-                                        ? "Fetching meetings and users"
-                                        : "Analyzing and matching meetings"}
+                                    {isLoadingData ? "Fetching meetings and users" : "Analyzing and matching meetings"}
                                 </p>
                             </div>
                         </div>
                     ) : isExecuting ? (
-                        <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <div className="flex flex-col items-center justify-center gap-2 h-full border border-dashed rounded-lg bg-muted/10 p-8 min-h-[400px]">
+                            <div className="relative flex items-center justify-center">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
                             <div className="text-center space-y-2">
                                 <p className="text-sm font-medium">Updating meetings...</p>
                                 <p className="text-xs text-muted-foreground">

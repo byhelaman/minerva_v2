@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { readTextFile, writeTextFile, exists, BaseDirectory } from "@tauri-apps/plugin-fs";
 
-import { SETTINGS_FILENAME } from "@/lib/constants";
+import { STORAGE_FILES } from "@/lib/constants";
 
 interface AppSettings {
     actionsRespectFilters: boolean;
@@ -39,9 +39,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
         const loadSettings = async () => {
             try {
-                const fileExists = await exists(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                const fileExists = await exists(STORAGE_FILES.APP_SETTINGS, { baseDir: BaseDirectory.AppLocalData });
                 if (fileExists) {
-                    const content = await readTextFile(SETTINGS_FILENAME, { baseDir: BaseDirectory.AppLocalData });
+                    const content = await readTextFile(STORAGE_FILES.APP_SETTINGS, { baseDir: BaseDirectory.AppLocalData });
                     const parsed = JSON.parse(content);
                     setSettings({ ...defaultSettings, ...parsed });
                 }
@@ -61,7 +61,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
         const saveSettings = async () => {
             try {
-                await writeTextFile(SETTINGS_FILENAME, JSON.stringify(settings, null, 2), {
+                await writeTextFile(STORAGE_FILES.APP_SETTINGS, JSON.stringify(settings, null, 2), {
                     baseDir: BaseDirectory.AppLocalData,
                 });
             } catch (e) {

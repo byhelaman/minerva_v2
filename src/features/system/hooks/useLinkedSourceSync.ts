@@ -4,8 +4,7 @@ import { BaseDirectory, readTextFile, writeTextFile, exists } from "@tauri-apps/
 import { toast } from "sonner";
 import SyncWorker from "../workers/sync-linked-source.worker.ts?worker"; // Importación de worker de Vite
 import type { SyncWorkerMessage, SyncWorkerResponse } from "../workers/sync-linked-source.worker";
-
-const CACHE_FILE_NAME = "linked_source_cache.json";
+import { STORAGE_FILES } from "@/lib/constants";
 
 export function useLinkedSourceSync() {
     const [isSyncing, setIsSyncing] = useState(false);
@@ -15,6 +14,7 @@ export function useLinkedSourceSync() {
     // Metadatos de caché
     // cachedData puede ser una matriz (legado/una hoja) o un Record<string, any[]> (multi-hoja)
     const [cachedData, setCachedData] = useState<any | any[]>([]);
+    const [cachedSheets, setCachedSheets] = useState<any[]>([]);
     const [lastUpdated, setLastUpdated] = useState<number | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
     const [fileId, setFileId] = useState<string | null>(null);
@@ -36,6 +36,14 @@ export function useLinkedSourceSync() {
         const loadCache = async () => {
             setIsRestoringCache(true);
             try {
+                // 0. Verificar sesión antes de llamar a la API
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    console.log("No session, skipping cache validation");
+                    setIsRestoringCache(false);
+                    return;
+                }
+
                 // 1. Obtener configuración actual para validar el caché
                 const { data: config, error } = await supabase.functions.invoke('microsoft-auth', {
                     body: { action: 'status' },
@@ -43,16 +51,20 @@ export function useLinkedSourceSync() {
                 });
 
                 if (error || !config?.account?.incidences_file?.id) {
-                    // Si no hay configuración o error, no podemos validar el caché
-                    // Mejor limpiar estado por seguridad
-                    // Continuamos, pero sabiendo que no tenemos truth
+                    // Si no hay configuración o error, no podemos validar el caché.
+                    // Por seguridad, descartamos el caché local para no mostrar datos incorrectos.
+                    setCachedData([]);
+                    setCachedSheets([]);
+                    setFileName(null);
+                    setFileId(null);
+                    return;
                 }
 
                 const currentFileId = config?.account?.incidences_file?.id;
 
-                const fileExists = await exists(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData });
+                const fileExists = await exists(STORAGE_FILES.EXCEL_DATA_MIRROR, { baseDir: BaseDirectory.AppLocalData });
                 if (fileExists) {
-                    const content = await readTextFile(CACHE_FILE_NAME, { baseDir: BaseDirectory.AppLocalData });
+                    const content = await readTextFile(STORAGE_FILES.EXCEL_DATA_MIRROR, { baseDir: BaseDirectory.AppLocalData });
                     const parsed = JSON.parse(content);
 
                     // VALIDACIÓN CRÍTICA: El caché debe pertenecer al archivo configurado actualmente
@@ -63,6 +75,7 @@ export function useLinkedSourceSync() {
                     }
 
                     if (parsed.data) setCachedData(parsed.data);
+                    if (parsed.sheets) setCachedSheets(parsed.sheets);
                     if (parsed.timestamp) setLastUpdated(parsed.timestamp);
                     if (parsed.fileName) setFileName(parsed.fileName);
                     if (parsed.fileId) setFileId(parsed.fileId);
@@ -82,6 +95,14 @@ export function useLinkedSourceSync() {
         setIsSyncing(true);
 
         try {
+            // 0. Verificar sesión
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                console.error("No active session for sync");
+                setIsSyncing(false);
+                return;
+            }
+
             // 1. Check if linked source is configured
             const { data: config, error } = await supabase.functions.invoke('microsoft-auth', {
                 body: { action: 'status' },
@@ -99,8 +120,7 @@ export function useLinkedSourceSync() {
             // Guardar en ref para acceso en el handler sin stale closure
             fileMetaRef.current = { id: currentFileId, name: currentFileName };
 
-            // 2. Get Access Token
-            const { data: { session } } = await supabase.auth.getSession();
+            // 2. Get Access Token (Already checked)
             if (!session?.access_token) {
                 console.error("No active session for sync");
                 setIsSyncing(false);
@@ -128,22 +148,25 @@ export function useLinkedSourceSync() {
                     const payload = {
                         timestamp: e.data.timestamp,
                         data: e.data.data,
+                        sheets: e.data.sheets,
                         fileName: fileMeta?.name || 'Linked File',
                         fileId: fileMeta?.id || ''
                     };
 
                     try {
-                        await writeTextFile(CACHE_FILE_NAME, JSON.stringify(payload), {
+                        await writeTextFile(STORAGE_FILES.EXCEL_DATA_MIRROR, JSON.stringify(payload), {
                             baseDir: BaseDirectory.AppLocalData
                         });
 
                         setCachedData(e.data.data);
+                        setCachedSheets(e.data.sheets);
                         setLastUpdated(e.data.timestamp);
                         setFileName(fileMeta?.name || null);
                         setFileId(fileMeta?.id || null);
 
-                        toast.success("Report synced");
-
+                        toast.success("Reports updated", {
+                            description: `Local data is in sync with ${fileMeta?.name || 'linked file'}`,
+                        });
                     } catch (saveError) {
                         console.error("Failed to save sync cache", saveError);
                     } finally {
@@ -183,6 +206,7 @@ export function useLinkedSourceSync() {
         isRestoringCache,
         lastUpdated,
         cachedData,
+        cachedSheets,
         fileName,
         fileId,
         sync
